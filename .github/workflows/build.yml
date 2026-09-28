@@ -43,7 +43,8 @@ jobs:
       - name: Rename APK
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk tkpst-schedule-${{ github.run_number }}.apk
-          mkdir -p shots && cp app/build/screenshots/*.png shots/ || true
+          mkdir -p shots && find . -path '*/build/screenshots/*.png' -exec cp {} shots/ \;
+          ls -la shots
 
       - uses: actions/upload-artifact@v4
         with:
@@ -121,4 +122,7 @@ jobs:
             Автоматическая сборка из ${{ github.sha }}
             - `.apk` — Android
             - `.ipa` — iPhone (ставится через AltStore / SideStore)
-          files: out/*
+          files: |
+            out/*.apk
+            out/*.ipa
+            out/**/*.png
