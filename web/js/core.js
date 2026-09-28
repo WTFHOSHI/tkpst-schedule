@@ -337,19 +337,53 @@ export async function schedulePlan(plan, now, source) {
   return { plan, leaveAt, legs, arrive, alternatives: [], durationMin: Math.floor((arrive - leaveAt) / 60e3) };
 }
 
+/**
+ * «Приехать к»: самый поздний выезд, при котором успеваешь к deadline.
+ * earliest — раньше этого выйти нельзя (обычно «сейчас»).
+ */
+export async function arriveBy(plan, deadline, earliest, source) {
+  let start = Math.max(earliest, deadline - (plan.staticMin + 20) * 60e3);
+  let j = await schedulePlan(plan, start, source);
+  // Не успеваем — сдвигаем выезд раньше.
+  for (let i = 0; i < 8 && j && j.arrive > deadline; i++) {
+    const next = start - (j.arrive - deadline) - 2 * 60e3;
+    if (next < earliest) {
+      if (start === earliest) return null;
+      start = earliest;
+    } else start = next;
+    j = await schedulePlan(plan, start, source);
+  }
+  if (!j || j.arrive > deadline) return null;
+  // Успеваем — пробуем выехать ещё позже (следующим автобусом).
+  for (let i = 0; i < 12; i++) {
+    const later = j.legs[0].board - plan.walkStart.minutes * 60e3 + 60e3;
+    const j2 = await schedulePlan(plan, later, source);
+    if (!j2 || j2.arrive > deadline || j2.legs[0].board <= j.legs[0].board) break;
+    j = j2;
+  }
+  return j;
+}
+
 const groupKey = (j) => j.legs.length === 1
   ? `D:${j.legs[0].leg.from.id}>${j.legs[0].leg.to.id}`
   : `T:${j.legs[0].leg.routeName}:${j.legs[0].leg.from.id}>${j.legs[0].leg.to.id}>${j.legs[1].leg.from.id}>${j.legs[1].leg.to.id}`;
 
 function ordered(list, sort) {
-  return [...list].sort(sort === 'arrival'
-    ? (a, b) => a.arrive - b.arrive || a.durationMin - b.durationMin
-    : (a, b) => a.durationMin - b.durationMin || a.arrive - b.arrive);
+  const cmp = {
+    arrival: (a, b) => a.arrive - b.arrive || a.durationMin - b.durationMin,
+    // «Приехать к»: сначала самый поздний выезд (меньше ждать), потом короче в пути
+    latest: (a, b) => b.leaveAt - a.leaveAt || a.durationMin - b.durationMin,
+    duration: (a, b) => a.durationMin - b.durationMin || a.arrive - b.arrive,
+  }[sort] || ((a, b) => a.durationMin - b.durationMin || a.arrive - b.arrive);
+  return [...list].sort(cmp);
 }
 
-/** Лучшие варианты; одинаковые пути с разными номерами склеены («или №54, 85»). */
+/**
+ * Лучшие варианты; одинаковые пути с разными номерами склеены («или №54, 85»).
+ * sort: 'duration' | 'arrival' | 'latest'. now — момент, от которого считаем «ближайшие».
+ */
 export function rankJourneys(journeys, sort, now, take = 5) {
-  let soon = journeys.filter((j) => j.leaveAt - now <= 3600e3);
+  let soon = sort === 'latest' ? journeys : journeys.filter((j) => j.leaveAt - now <= 3600e3);
   if (!soon.length) soon = journeys;
   const groups = new Map();
   for (const j of ordered(soon, sort)) {

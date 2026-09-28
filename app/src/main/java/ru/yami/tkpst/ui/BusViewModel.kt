@@ -30,6 +30,15 @@ import java.time.LocalTime
 
 enum class Direction(val title: String) { TO_COLLEGE("В колледж"), TO_HOME("Домой") }
 
+/** Когда ехать — как в 2ГИС. */
+enum class WhenMode(val title: String) { NOW("Сейчас"), DEPART("Выехать в"), ARRIVE("Приехать к") }
+
+/** day: 0 — сегодня, 1 — завтра. */
+data class WhenSpec(val mode: WhenMode = WhenMode.NOW, val day: Int = 0, val time: LocalTime = LocalTime.of(8, 0))
+
+/** Подсказка «к 1-й паре» / «после пар». */
+data class QuickWhen(val spec: WhenSpec, val label: String)
+
 data class RouteArrivals(val routeName: String, val times: List<LocalDateTime>, val useful: Boolean)
 
 data class StopBoard(val stop: Stop, val walk: Walk, val arrivals: List<RouteArrivals>)
@@ -43,6 +52,11 @@ sealed interface BusState {
         val boards: List<StopBoard>,
         val updatedAt: LocalDateTime,
         val noStopsNearby: Boolean,
+        val whenSpec: WhenSpec = WhenSpec(),
+        /** Выбранный момент для «выехать в» / «приехать к». */
+        val target: LocalDateTime? = null,
+        /** «Приехать к» уже прошло. */
+        val past: Boolean = false,
     ) : BusState
     data class Error(val message: String) : BusState
 }
@@ -60,6 +74,62 @@ class BusViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var refreshing by mutableStateOf(false)
         private set
+    var whenSpec by mutableStateOf(WhenSpec())
+        private set
+
+    fun target(spec: WhenSpec = whenSpec): LocalDateTime =
+        LocalDate.now(TYUMEN).plusDays(spec.day.toLong()).atTime(spec.time)
+
+    /** Если выбранное время сегодня уже прошло — значит, имеется в виду завтра. */
+    private fun normalized(spec: WhenSpec): WhenSpec =
+        if (spec.mode != WhenMode.NOW && spec.day == 0 && target(spec).isBefore(LocalDateTime.now(TYUMEN))) spec.copy(day = 1)
+        else spec
+
+    fun setWhen(spec: WhenSpec) {
+        val n = normalized(spec)
+        if (n == whenSpec) return
+        whenSpec = n
+        refresh(showSpinner = true)
+    }
+
+    fun selectMode(mode: WhenMode) {
+        if (mode == whenSpec.mode) return
+        var spec = whenSpec.copy(mode = mode)
+        if (whenSpec.mode == WhenMode.NOW && mode != WhenMode.NOW) {
+            // Разумное время по умолчанию: подсказка по расписанию или через час
+            val q = quickWhen()
+            spec = if (q != null && q.spec.mode == mode) q.spec
+            else {
+                val t = LocalDateTime.now(TYUMEN).plusHours(1)
+                val rounded = t.toLocalTime().withSecond(0).withNano(0).let { it.withMinute(it.minute / 5 * 5) }
+                WhenSpec(mode, if (t.toLocalDate().isAfter(LocalDate.now(TYUMEN))) 1 else 0, rounded)
+            }
+        }
+        setWhen(spec)
+    }
+
+    /** К первой паре (в колледж) или после последней пары (домой) — сегодня или завтра. */
+    fun quickWhen(): QuickWhen? {
+        val now = LocalDateTime.now(TYUMEN)
+        for (add in 0..1) {
+            val day = now.toLocalDate().plusDays(add.toLong())
+            if (day.dayOfWeek == java.time.DayOfWeek.SUNDAY) continue
+            val entries = Timeline.build(day, a.repository.cached(day)?.lessons.orEmpty())
+            if (entries.isEmpty()) continue
+            val suffix = if (add == 1) " завтра" else ""
+            if (direction == Direction.TO_COLLEGE) {
+                val first = entries.first()
+                if (day.atTime(first.start).isBefore(now.plusMinutes(20))) continue
+                val title = if (first is ru.yami.tkpst.data.Entry.Pair) "К ${first.number}-й паре" else "К классному часу"
+                return QuickWhen(WhenSpec(WhenMode.ARRIVE, add, first.start.minusMinutes(5)), "$title · ${first.start.format(HM)}$suffix")
+            } else {
+                val end = entries.last().end
+                if (day.atTime(end).isBefore(now)) continue
+                return QuickWhen(WhenSpec(WhenMode.DEPART, add, end.plusMinutes(5)), "После пар · ${end.format(HM)}$suffix")
+            }
+        }
+        return null
+    }
 
     private var job: Job? = null
     private var plansKey: String? = null
@@ -132,18 +202,35 @@ class BusViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun compute(net: Network, from: LatLng): BusState.Ready = coroutineScope {
         val now = LocalDateTime.now(TYUMEN)
+        val spec = normalized(whenSpec)
+        val target = if (spec.mode == WhenMode.NOW) null else target(spec)
         if (plans.isEmpty()) {
-            return@coroutineScope BusState.Ready(emptyList(), boards(net, from, emptyList(), now), now, net.near(from, Router.ACCESS_RADIUS_M).isEmpty())
+            return@coroutineScope BusState.Ready(
+                emptyList(), if (spec.mode == WhenMode.NOW) boards(net, from, emptyList(), now) else emptyList(),
+                now, net.near(from, Router.ACCESS_RADIUS_M).isEmpty(), spec, target,
+            )
+        }
+        if (spec.mode == WhenMode.ARRIVE && target!!.isBefore(now.plusMinutes(5))) {
+            return@coroutineScope BusState.Ready(emptyList(), emptyList(), now, false, spec, target, past = true)
         }
         // Сначала параллельно берём онлайн-прогнозы для всех нужных остановок.
         val stopIds = plans.flatMap { p -> p.legs.map { it.from.id } }.distinct()
         stopIds.map { async { transit.live(it) } }.awaitAll()
 
         val source = transit.departureSource()
-        val journeys = plans.map { p -> async { runCatching { Router.schedule(p, now, source) }.getOrNull() } }
-            .awaitAll().filterNotNull()
-        val ranked = Router.rank(journeys, sort, now, take = 5)
-        BusState.Ready(ranked, boards(net, from, ranked, now), now, false)
+        val base = if (spec.mode == WhenMode.DEPART && target!!.isAfter(now)) target!! else now
+        val journeys = plans.map { p ->
+            async {
+                runCatching {
+                    if (spec.mode == WhenMode.ARRIVE) Router.arriveBy(p, target!!, now, source)
+                    else Router.schedule(p, base, source)
+                }.getOrNull()
+            }
+        }.awaitAll().filterNotNull()
+        val ranked = Router.rank(journeys, if (spec.mode == WhenMode.ARRIVE) Router.Sort.LATEST else sort, base, take = 5)
+        // «Ближайшие автобусы» имеют смысл только для «сейчас»
+        val b = if (spec.mode == WhenMode.NOW) boards(net, from, ranked, now) else emptyList()
+        BusState.Ready(ranked, b, now, false, spec, target)
     }
 
     /** «Ближайшие автобусы» на 2–3 остановках рядом с точкой отправления. */

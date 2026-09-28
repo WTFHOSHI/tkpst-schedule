@@ -1,7 +1,7 @@
 // Интерфейс сайта: главный экран, расписание, автобусы, адрес, настройки.
 import {
   T, fmt, formatLeft, buildTimeline, COLLEGE, COLLEGE_LABEL, ACCESS_RADIUS,
-  findPlans, schedulePlan, rankJourneys, distM, walkM, walkMin,
+  findPlans, schedulePlan, rankJourneys, arriveBy, distM, walkM, walkMin,
 } from './core.js';
 import {
   store, cachedDay, loadDay, weeksToSync, prefetch, clearScheduleCache,
@@ -90,16 +90,11 @@ function notifyChanges(changes) {
 // ---------------- Главный ----------------
 
 function home() {
-  const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
-  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
   const now = T.now();
   $app.innerHTML = `
     ${topBar('ТКПСТ', `Тюмень · ${fmt.wdLong(now)}, ${fmt.dMonth(now)} · ${T.hm(now)}`, {
       back: false, actions: `<button class="icon" data-go="settings" aria-label="Настройки">${I.gear}</button>` })}
     <main class="home">
-      ${!standalone ? `<div class="hint">${isIOS
-        ? 'Добавь сайт на экран «Домой»: кнопка <b>Поделиться</b> → <b>На экран «Домой»</b>. Откроется как приложение.'
-        : 'Можно добавить сайт на главный экран через меню браузера — откроется как приложение.'}</div>` : ''}
       <a class="big primary" href="#/schedule">
         <span class="big-icon">${I.calendar}</span>
         <span><span class="big-t">Расписание</span><span class="big-s">Пары группы ИС-25-3С</span></span>
@@ -349,6 +344,8 @@ function renderList(scroll) {
 const bus = {
   direction: null,
   sort: 'duration',
+  // Когда ехать: сейчас / выехать в / приехать к (как в 2ГИС)
+  when: { mode: 'now', day: 0, time: '08:00' },
   state: { kind: 'searching' },
   plans: [],
   plansKey: null,
@@ -362,6 +359,35 @@ function autoDirection() {
   const entries = buildTimeline(T.weekday(now), c ? c.lessons : []);
   const end = entries.length ? entries[entries.length - 1].end : 14 * 60;
   return T.minuteOfDay(now) < end ? 'toCollege' : 'toHome';
+}
+
+const toMin = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+
+/** Выбранный момент (тюменское время, мс) для режимов «выехать в» / «приехать к». */
+function whenTarget() {
+  return T.dayStart(T.now()) + bus.when.day * 864e5 + toMin(bus.when.time) * 60e3;
+}
+
+/** Подсказка: к первой паре (в колледж) или после последней пары (домой). */
+function quickWhen() {
+  const now = T.now();
+  for (let add = 0; add < 7; add++) {
+    const day = T.addDays(T.dayStart(now), add);
+    if (T.weekday(day) === 7 || add > 1) continue; // только сегодня/завтра
+    const c = cachedDay(day);
+    const entries = buildTimeline(T.weekday(day), c ? c.lessons : []);
+    if (!entries.length) continue;
+    if (bus.direction === 'toCollege') {
+      const start = entries[0].start;
+      if (day + start * 60e3 < now + 20 * 60e3) continue; // уже не успеть — смотрим завтра
+      const title = entries[0].type === 'ch' ? 'К классному часу' : `К ${entries[0].number}-й паре`;
+      return { mode: 'arrive', day: add, time: T.hmMin(start - 5), label: `${title} · ${T.hmMin(start)}${add ? ' завтра' : ''}` };
+    }
+    const end = entries[entries.length - 1].end;
+    if (day + end * 60e3 < now) continue;
+    return { mode: 'depart', day: add, time: T.hmMin(end + 5), label: `После пар · ${T.hmMin(end)}${add ? ' завтра' : ''}` };
+  }
+  return null;
 }
 
 function buses() {
@@ -396,37 +422,77 @@ function buses() {
   cleanup = () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVis); };
 }
 
+/** Если выбранное время сегодня уже прошло — значит, имеется в виду завтра. */
+function normalizeWhen() {
+  const w = bus.when;
+  if (w.mode !== 'now' && w.day === 0 && whenTarget() < T.now()) w.day = 1;
+}
+
 function renderBusHead(home) {
+  normalizeWhen();
   const head = $app.querySelector('[data-bushead]');
   const from = bus.direction === 'toCollege' ? home.label : COLLEGE_LABEL;
   const to = bus.direction === 'toCollege' ? COLLEGE_LABEL : home.label;
+  const w = bus.when;
+  const quick = quickWhen();
+  const on = (c) => (c ? 'on' : '');
   head.innerHTML = `<div class="bushead">
     <div class="seg">
-      <button class="${bus.direction === 'toCollege' ? 'on' : ''}" data-dir="toCollege">В колледж</button>
-      <button class="${bus.direction === 'toHome' ? 'on' : ''}" data-dir="toHome">Домой</button>
+      <button class="${on(bus.direction === 'toCollege')}" data-dir="toCollege">В колледж</button>
+      <button class="${on(bus.direction === 'toHome')}" data-dir="toHome">Домой</button>
     </div>
     <div class="fromto">${esc(from)} → ${esc(to)}</div>
+    <div class="seg three">
+      <button class="${on(w.mode === 'now')}" data-mode="now">Сейчас</button>
+      <button class="${on(w.mode === 'depart')}" data-mode="depart">Выехать в</button>
+      <button class="${on(w.mode === 'arrive')}" data-mode="arrive">Приехать к</button>
+    </div>
+    ${w.mode !== 'now' ? `<div class="whenrow">
+      <div class="seg mini">
+        <button class="${on(w.day === 0)}" data-wday="0">Сегодня</button>
+        <button class="${on(w.day === 1)}" data-wday="1">Завтра</button>
+      </div>
+      <input class="timein" type="time" data-time value="${w.time}" step="300">
+    </div>` : ''}
     <div class="sorts">
-      <button class="pill ${bus.sort === 'duration' ? 'on' : ''}" data-sort="duration">Меньше в пути</button>
-      <button class="pill ${bus.sort === 'arrival' ? 'on' : ''}" data-sort="arrival">Раньше приеду</button>
+      ${quick ? `<button class="pill quick" data-quick>${esc(quick.label)}</button>` : ''}
+      ${w.mode !== 'arrive' ? `
+      <button class="pill ${on(bus.sort === 'duration')}" data-sort="duration">Меньше в пути</button>
+      <button class="pill ${on(bus.sort === 'arrival')}" data-sort="arrival">Раньше приеду</button>` : ''}
     </div>
   </div>`;
+  const redo = (spinner = true) => { renderBusHead(home); refreshBus(false, spinner); };
   head.querySelectorAll('[data-dir]').forEach((b) => {
-    b.onclick = () => {
-      if (bus.direction === b.dataset.dir) return;
-      bus.direction = b.dataset.dir;
-      renderBusHead(home);
-      refreshBus(false, true);
-    };
+    b.onclick = () => { if (bus.direction !== b.dataset.dir) { bus.direction = b.dataset.dir; redo(); } };
   });
   head.querySelectorAll('[data-sort]').forEach((b) => {
+    b.onclick = () => { if (bus.sort !== b.dataset.sort) { bus.sort = b.dataset.sort; redo(false); } };
+  });
+  head.querySelectorAll('[data-mode]').forEach((b) => {
     b.onclick = () => {
-      if (bus.sort === b.dataset.sort) return;
-      bus.sort = b.dataset.sort;
-      renderBusHead(home);
-      refreshBus(false);
+      const mode = b.dataset.mode;
+      if (w.mode === mode) return;
+      if (mode !== 'now' && w.mode === 'now') {
+        // Разумное время по умолчанию: подсказка по расписанию или через час
+        const q = quickWhen();
+        if (q && q.mode === mode) { w.day = q.day; w.time = q.time; }
+        else {
+          const t = T.now() + 3600e3;
+          w.day = T.dayStart(t) > T.dayStart(T.now()) ? 1 : 0;
+          w.time = T.hmMin(Math.floor(T.minuteOfDay(t) / 5) * 5);
+        }
+      }
+      w.mode = mode;
+      redo();
     };
   });
+  head.querySelectorAll('[data-wday]').forEach((b) => {
+    b.onclick = () => { if (w.day !== +b.dataset.wday) { w.day = +b.dataset.wday; redo(); } };
+  });
+  const ti = head.querySelector('[data-time]');
+  if (ti) ti.onchange = () => { if (ti.value) { w.time = ti.value; redo(); } };
+  const qb = head.querySelector('[data-quick]');
+  if (qb) qb.onclick = () => { Object.assign(w, { mode: quick.mode, day: quick.day, time: quick.time }); redo(); };
 }
 
 async function refreshBus(force = false, spinner = false) {
@@ -452,12 +518,27 @@ async function refreshBus(force = false, spinner = false) {
       bus.plansKey = key;
     }
     const now = T.now();
-    await Promise.all([...new Set(bus.plans.flatMap((p) => p.legs.map((l) => l.from.id)))].map(liveAt));
-    const js = (await Promise.all(bus.plans.map((p) => schedulePlan(p, now, departureSource).catch(() => null)))).filter(Boolean);
-    const ranked = rankJourneys(js, sort, now, 5);
-    const boards = await stopBoards(net, from, ranked, now);
-    if (seq !== bus.seq) return;
-    bus.state = { kind: 'ready', journeys: ranked, boards, updatedAt: now, noStops: !bus.plans.length && !net.near(from, ACCESS_RADIUS).length };
+    const w = { ...bus.when };
+    const target = w.mode === 'now' ? now : whenTarget();
+    if (w.mode === 'arrive' && target <= now + 5 * 60e3) {
+      bus.state = { kind: 'ready', journeys: [], boards: [], updatedAt: now, noStops: false, past: true, when: w, target };
+    } else {
+      await Promise.all([...new Set(bus.plans.flatMap((p) => p.legs.map((l) => l.from.id)))].map(liveAt));
+      let js;
+      if (w.mode === 'arrive') {
+        js = await Promise.all(bus.plans.map((p) => arriveBy(p, target, now, departureSource).catch(() => null)));
+      } else {
+        const base = Math.max(now, target);
+        js = await Promise.all(bus.plans.map((p) => schedulePlan(p, base, departureSource).catch(() => null)));
+      }
+      const base = w.mode === 'depart' ? Math.max(now, target) : now;
+      const ranked = rankJourneys(js.filter(Boolean), w.mode === 'arrive' ? 'latest' : sort, base, 5);
+      // «Ближайшие автобусы» имеют смысл только для «сейчас»
+      const boards = w.mode === 'now' ? await stopBoards(net, from, ranked, now) : [];
+      if (seq !== bus.seq) return;
+      bus.state = { kind: 'ready', journeys: ranked, boards, updatedAt: now, when: w, target,
+        noStops: !bus.plans.length && !net.near(from, ACCESS_RADIUS).length };
+    }
   } catch {
     if (seq !== bus.seq) return;
     bus.state = { kind: 'error' };
@@ -505,7 +586,7 @@ const short = (now, t) => { const s = Math.round((t - now) / 1000); return s < 6
 const mins = (m) => Math.max(1, Math.floor(m));
 const badge = (name, on = true) => `<span class="route ${on ? '' : 'off'}">${esc(name)}</span>`;
 
-function journeyHtml(j, now, dir) {
+function journeyHtml(j, now, dir, st = {}) {
   const target = dir === 'toCollege' ? 'колледжа' : 'дома';
   const leaveS = Math.round((j.leaveAt - now) / 1000);
   const step = (t, sub) => `<div class="step"><i></i><div><div>${t}</div>${sub ? `<div class="muted small">${esc(sub)}</div>` : ''}</div></div>`;
@@ -519,7 +600,7 @@ function journeyHtml(j, now, dir) {
     }
     const ride = Math.max(1, Math.round((tl.alight - tl.board) / 60e3));
     s += `<div class="busstep">${badge(tl.leg.routeName)}<div>
-      <div><b class="accent">${until(now, tl.board)} · ${T.hm(tl.board)}</b> <span class="tag ${tl.live ? 'live' : ''}">${tl.live ? 'онлайн' : 'по графику'}</span></div>
+      <div><b class="accent">${tl.board - now > 3 * 3600e3 ? `в ${T.hm(tl.board)}${T.dayStart(tl.board) > T.dayStart(now) ? ' завтра' : ''}` : `${until(now, tl.board)} · ${T.hm(tl.board)}`}</b> <span class="tag ${tl.live ? 'live' : ''}">${tl.live ? 'онлайн' : 'по графику'}</span></div>
       <div class="muted small">Проезд ~${ride} мин, ${tl.leg.stopsCount} ост. до «${esc(tl.leg.to.name)}»</div>
     </div></div>`;
     return s;
@@ -527,11 +608,14 @@ function journeyHtml(j, now, dir) {
   return `<article class="card journey">
     <div class="jhead">
       <div><div class="big-num">${j.durationMin} мин</div><div class="muted small">в пути · ${j.legs.length === 1 ? 'без пересадок' : '1 пересадка'}</div></div>
-      <div class="right"><div class="muted small">прибытие</div><div class="arr">${T.hm(j.arrive)}</div></div>
+      <div class="right"><div class="muted small">прибытие</div><div class="arr">${T.hm(j.arrive)}</div>
+        ${st.when && st.when.mode === 'arrive' ? `<div class="muted small">запас ${Math.max(0, Math.floor((st.target - j.arrive) / 60e3))} мин</div>` : ''}</div>
     </div>
     <div class="routes">${j.legs.map((l, i) => (i ? '<span class="muted">→</span>' : '') + badge(l.leg.routeName)).join('')}
       ${j.alternatives.length ? `<span class="muted small">или ${j.alternatives.slice(0, 5).map((a) => '№' + esc(a)).join(', ')}</span>` : ''}</div>
-    <div class="leave">${leaveS <= 30 ? 'Выходи сейчас' : `Выходи через ${formatLeft(leaveS)} (в ${T.hm(j.leaveAt)})`}</div>
+    <div class="leave">${leaveS <= 30 ? 'Выходи сейчас' : leaveS > 3 * 3600
+      ? `Выходи в ${T.hm(j.leaveAt)}${T.dayStart(j.leaveAt) > T.dayStart(now) ? ' завтра' : ''}`
+      : `Выходи через ${formatLeft(leaveS)} (в ${T.hm(j.leaveAt)})`}</div>
     ${step(`Пешком ${mins(j.plan.walkStart.minutes)} мин · ${j.plan.walkStart.meters} м до «${esc(j.legs[0].leg.from.name)}»`, j.legs[0].leg.from.desc)}
     ${legsHtml}
     ${step(`Пешком ${mins(j.plan.walkEnd.minutes)} мин · ${j.plan.walkEnd.meters} м до ${target}`)}
@@ -565,12 +649,17 @@ function renderBusList() {
     html = msg('Ошибка', 'Не удалось загрузить маршруты. Проверь интернет.', '<button class="btn" data-retry>Повторить</button>');
   } else {
     const parts = [];
-    if (!s.journeys.length) {
+    if (s.past) {
+      parts.push('<div class="note">Это время уже прошло или слишком близко. Выбери время позже или «Завтра».</div>');
+    } else if (!s.journeys.length) {
       parts.push(`<div class="note">${s.noStops ? 'В радиусе километра нет остановок.'
-        : 'Сейчас не нашлось автобусов по этому направлению (возможно, уже ночь). Посмотри ближайшие автобусы ниже.'}</div>`);
+        : s.when && s.when.mode !== 'now' ? 'К этому времени подходящих рейсов не нашлось. Попробуй другое время.'
+          : 'Сейчас не нашлось автобусов по этому направлению (возможно, уже ночь). Посмотри ближайшие автобусы ниже.'}</div>`);
     } else {
-      parts.push('<h3 class="section">Лучшие маршруты</h3>');
-      s.journeys.forEach((j) => parts.push(journeyHtml(j, now, bus.direction)));
+      const title = s.when && s.when.mode === 'arrive' ? `Чтобы успеть к ${T.hm(s.target)}${T.dayStart(s.target) > T.dayStart(now) ? ' завтра' : ''}`
+        : s.when && s.when.mode === 'depart' ? `Выезд в ${T.hm(s.target)}${T.dayStart(s.target) > T.dayStart(now) ? ' завтра' : ''}` : 'Лучшие маршруты';
+      parts.push(`<h3 class="section">${title}</h3>`);
+      s.journeys.forEach((j) => parts.push(journeyHtml(j, now, bus.direction, s)));
     }
     if (s.boards.length) {
       parts.push('<h3 class="section">Ближайшие автобусы</h3>');

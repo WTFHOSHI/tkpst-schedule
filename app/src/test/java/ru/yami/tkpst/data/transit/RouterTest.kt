@@ -87,4 +87,26 @@ class RouterTest {
     fun noStopsNearby() {
         assertTrue(Router.findPlans(net, LatLng(56.0, 60.0), college).isEmpty())
     }
+
+    @Test
+    fun arriveByPicksLatestDeparture() = runBlocking {
+        val earliest = LocalDateTime.of(2026, 9, 29, 22, 0)
+        val day = LocalDateTime.of(2026, 9, 30, 6, 0)
+        val source = object : Router.DepartureSource {
+            override suspend fun next(stopId: Int, routeId: Int, forward: Boolean, after: LocalDateTime): Router.Departure? {
+                var t = day.plusMinutes(if (routeId == 3) 5L else 0L)
+                while (t.isBefore(after)) t = t.plusMinutes(10)
+                return Router.Departure(t, live = false)
+            }
+        }
+        val deadline = LocalDateTime.of(2026, 9, 30, 8, 10)
+        val js = Router.findPlans(net, home, college).mapNotNull { Router.arriveBy(it, deadline, earliest, source) }
+        assertTrue(js.isNotEmpty())
+        js.forEach { j ->
+            assertTrue("успеваем", !j.arrive.isAfter(deadline))
+            assertTrue("не слишком рано", j.arrive.isAfter(deadline.minusMinutes(11)))
+        }
+        val r = Router.rank(js, Router.Sort.LATEST, earliest)
+        assertEquals(r.map { it.leaveAt }, r.map { it.leaveAt }.sortedDescending())
+    }
 }

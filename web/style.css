@@ -197,3 +197,15 @@ svg { display: block; }
   opacity: 0; transform: translateY(20px); transition: .3s;
 }
 .toast.show { opacity: 1; transform: none; }
+
+/* Когда ехать */
+.seg.three { grid-template-columns: 1fr 1fr 1fr; }
+.seg.three button { font-size: 14px; padding: 7px 4px; }
+.whenrow { display: flex; gap: 8px; align-items: center; }
+.seg.mini { flex: 1; }
+.seg.mini button { font-size: 14px; padding: 6px; }
+.timein {
+  font: inherit; font-size: 18px; font-weight: 700; color: var(--text); background: var(--card);
+  border: 1px solid var(--outline); border-radius: 12px; padding: 6px 10px; min-width: 110px; text-align: center;
+}
+.pill.quick { background: var(--primary-c); color: var(--on-primary-c); border-color: transparent; font-weight: 600; }

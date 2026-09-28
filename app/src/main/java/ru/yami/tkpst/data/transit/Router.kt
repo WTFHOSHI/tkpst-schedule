@@ -268,30 +268,59 @@ object Router {
         return Journey(plan, maxOf(leave, now), timed, arrive)
     }
 
-    enum class Sort { DURATION, ARRIVAL }
+    /**
+     * «Приехать к»: самый поздний выезд, при котором успеваешь к [deadline].
+     * [earliest] — раньше этого выйти нельзя (обычно «сейчас»).
+     */
+    suspend fun arriveBy(plan: Plan, deadline: LocalDateTime, earliest: LocalDateTime, source: DepartureSource): Journey? {
+        var start = maxOf(earliest, plusMin(deadline, -(plan.staticMin + 20)))
+        var j = schedule(plan, start, source)
+        // Не успеваем — выезжаем раньше.
+        var i = 0
+        while (i < 8 && j != null && j.arrive.isAfter(deadline)) {
+            val late = Duration.between(deadline, j.arrive)
+            val next = start.minus(late).minusMinutes(2)
+            if (next.isBefore(earliest)) {
+                if (start == earliest) return null
+                start = earliest
+            } else start = next
+            j = schedule(plan, start, source)
+            i++
+        }
+        if (j == null || j.arrive.isAfter(deadline)) return null
+        // Успеваем — пробуем следующий автобус, чтобы не выходить слишком рано.
+        repeat(12) {
+            val later = plusMin(j!!.legs.first().board, -plan.walkStart.minutes + 1.0)
+            val j2 = schedule(plan, later, source)
+            if (j2 == null || j2.arrive.isAfter(deadline) || !j2.legs.first().board.isAfter(j!!.legs.first().board)) return j
+            j = j2
+        }
+        return j
+    }
 
-    /** Лучшие варианты: сначала самые короткие в пути (или раньше всех приезжающие). */
+    /** DURATION — меньше в пути, ARRIVAL — раньше приеду, LATEST — «приехать к»: выйти как можно позже. */
+    enum class Sort { DURATION, ARRIVAL, LATEST }
+
+    private fun ordered(list: List<Journey>, sort: Sort): List<Journey> = when (sort) {
+        Sort.DURATION -> list.sortedWith(compareBy<Journey> { it.durationMin }.thenBy { it.arrive })
+        Sort.ARRIVAL -> list.sortedWith(compareBy<Journey> { it.arrive }.thenBy { it.durationMin })
+        Sort.LATEST -> list.sortedWith(compareByDescending<Journey> { it.leaveAt }.thenBy { it.durationMin })
+    }
+
+    /** Лучшие варианты; [now] — момент, от которого считаются «ближайшие». */
     fun rank(journeys: List<Journey>, sort: Sort, now: LocalDateTime, take: Int = 5): List<Journey> {
         // Не предлагаем автобусы, до которых больше часа — это уже не «ближайший» вариант.
-        val soon = journeys.filter { Duration.between(now, it.leaveAt).toMinutes() <= 60 }
-            .ifEmpty { journeys }
-        val sorted = when (sort) {
-            Sort.DURATION -> soon.sortedWith(compareBy<Journey> { it.durationMin }.thenBy { it.arrive })
-            Sort.ARRIVAL -> soon.sortedWith(compareBy<Journey> { it.arrive }.thenBy { it.durationMin })
-        }
+        val soon = if (sort == Sort.LATEST) journeys
+        else journeys.filter { Duration.between(now, it.leaveAt).toMinutes() <= 60 }.ifEmpty { journeys }
         // Склеиваем одинаковые пути с разными номерами: показываем лучший, остальные — «или №…».
-        val grouped = sorted.groupBy { it.groupKey }.values.map { group ->
+        val grouped = ordered(soon, sort).groupBy { it.groupKey }.values.map { group ->
             val best = group.first()
             val others = group.drop(1).map { it.legs.last().leg.routeName }
                 .filter { it != best.legs.last().leg.routeName }
                 .distinct()
             best.copy(alternatives = others)
         }
-        val ordered = when (sort) {
-            Sort.DURATION -> grouped.sortedWith(compareBy<Journey> { it.durationMin }.thenBy { it.arrive })
-            Sort.ARRIVAL -> grouped.sortedWith(compareBy<Journey> { it.arrive }.thenBy { it.durationMin })
-        }
         // Один вариант на комбинацию номеров (у одного номера бывают разные id направлений).
-        return ordered.distinctBy { j -> j.legs.joinToString(">") { it.leg.routeName } }.take(max(1, take))
+        return ordered(grouped, sort).distinctBy { j -> j.legs.joinToString(">") { it.leg.routeName } }.take(max(1, take))
     }
 }

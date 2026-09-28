@@ -1,5 +1,6 @@
 package ru.yami.tkpst.ui
 
+import android.app.TimePickerDialog
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -24,7 +25,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -43,6 +46,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -152,23 +156,59 @@ fun BusScreen(vm: BusViewModel, home: HomeAddress?, onBack: () -> Unit, onEditAd
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = vm.sort == Router.Sort.DURATION,
-                        onClick = { vm.selectSort(Router.Sort.DURATION) },
-                        label = { Text("Меньше в пути") },
-                    )
-                    FilterChip(
-                        selected = vm.sort == Router.Sort.ARRIVAL,
-                        onClick = { vm.selectSort(Router.Sort.ARRIVAL) },
-                        label = { Text("Раньше приеду") },
-                    )
-                }
+                WhenPicker(vm)
             }
             BusContent(vm, now, vm.direction)
         }
     }
 }
+
+/** Когда ехать: сейчас / выехать в / приехать к (как в 2ГИС) + подсказка по расписанию. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WhenPicker(vm: BusViewModel) {
+    val ctx = LocalContext.current
+    val spec = vm.whenSpec
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            WhenMode.entries.forEach { m ->
+                FilterChip(selected = spec.mode == m, onClick = { vm.selectMode(m) }, label = { Text(m.title) })
+            }
+        }
+        if (spec.mode != WhenMode.NOW) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(selected = spec.day == 0, onClick = { vm.setWhen(spec.copy(day = 0)) }, label = { Text("Сегодня") })
+                FilterChip(selected = spec.day == 1, onClick = { vm.setWhen(spec.copy(day = 1)) }, label = { Text("Завтра") })
+                Spacer(Modifier.weight(1f))
+                OutlinedButton(onClick = {
+                    TimePickerDialog(ctx, { _, h, m -> vm.setWhen(spec.copy(time = java.time.LocalTime.of(h, m))) },
+                        spec.time.hour, spec.time.minute, true).show()
+                }) {
+                    Text(spec.time.format(HM), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            vm.quickWhen()?.let { q ->
+                AssistChip(onClick = { vm.setWhen(q.spec) }, label = { Text(q.label, fontWeight = FontWeight.SemiBold) })
+            }
+            if (spec.mode != WhenMode.ARRIVE) {
+                FilterChip(
+                    selected = vm.sort == Router.Sort.DURATION,
+                    onClick = { vm.selectSort(Router.Sort.DURATION) },
+                    label = { Text("Меньше в пути") },
+                )
+                FilterChip(
+                    selected = vm.sort == Router.Sort.ARRIVAL,
+                    onClick = { vm.selectSort(Router.Sort.ARRIVAL) },
+                    label = { Text("Раньше приеду") },
+                )
+            }
+        }
+    }
+}
+
+private fun dayWord(t: LocalDateTime, now: LocalDateTime) = if (t.toLocalDate().isAfter(now.toLocalDate())) " завтра" else ""
 
 @Composable
 private fun BusContent(vm: BusViewModel, now: LocalDateTime, direction: Direction) {
@@ -201,18 +241,28 @@ private fun BusContent(vm: BusViewModel, now: LocalDateTime, direction: Directio
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            if (s.journeys.isEmpty()) {
+            if (s.past) {
+                item { InfoCard("Это время уже прошло или слишком близко. Выбери время позже или «Завтра».") }
+            } else if (s.journeys.isEmpty()) {
                 item {
                     InfoCard(
-                        if (s.noStopsNearby) "В радиусе километра нет остановок."
-                        else "Сейчас не нашлось автобусов по этому направлению (возможно, уже ночь). " +
-                            "Посмотри ближайшие автобусы ниже."
+                        when {
+                            s.noStopsNearby -> "В радиусе километра нет остановок."
+                            s.whenSpec.mode != WhenMode.NOW -> "К этому времени подходящих рейсов не нашлось. Попробуй другое время."
+                            else -> "Сейчас не нашлось автобусов по этому направлению (возможно, уже ночь). " +
+                                "Посмотри ближайшие автобусы ниже."
+                        }
                     )
                 }
             } else {
-                item { SectionTitle("Лучшие маршруты") }
+                val title = when {
+                    s.whenSpec.mode == WhenMode.ARRIVE && s.target != null -> "Чтобы успеть к ${s.target.format(HM)}${dayWord(s.target, now)}"
+                    s.whenSpec.mode == WhenMode.DEPART && s.target != null -> "Выезд в ${s.target.format(HM)}${dayWord(s.target, now)}"
+                    else -> "Лучшие маршруты"
+                }
+                item { SectionTitle(title) }
                 items(s.journeys, key = { it.plan.key + it.legs.first().board }) { j ->
-                    JourneyCard(j, now, direction)
+                    JourneyCard(j, now, direction, if (s.whenSpec.mode == WhenMode.ARRIVE) s.target else null)
                 }
             }
             if (s.boards.isNotEmpty()) {
@@ -268,7 +318,7 @@ fun RouteBadge(name: String, highlighted: Boolean = true) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun JourneyCard(j: Router.Journey, now: LocalDateTime, direction: Direction) {
+private fun JourneyCard(j: Router.Journey, now: LocalDateTime, direction: Direction, deadline: LocalDateTime? = null) {
     val cs = MaterialTheme.colorScheme
     val target = if (direction == Direction.TO_COLLEGE) "колледжа" else "дома"
     Surface(
@@ -290,6 +340,12 @@ private fun JourneyCard(j: Router.Journey, now: LocalDateTime, direction: Direct
                 Column(horizontalAlignment = Alignment.End) {
                     Text("прибытие", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                     Text(j.arrive.format(HM), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    if (deadline != null) {
+                        Text(
+                            "запас ${Duration.between(j.arrive, deadline).toMinutes().coerceAtLeast(0)} мин",
+                            style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+                        )
+                    }
                 }
             }
             // Номера
@@ -312,7 +368,11 @@ private fun JourneyCard(j: Router.Journey, now: LocalDateTime, direction: Direct
             val leaveSec = Duration.between(now, j.leaveAt).seconds
             Surface(color = cs.primaryContainer, contentColor = cs.onPrimaryContainer, shape = RoundedCornerShape(12.dp)) {
                 Text(
-                    if (leaveSec <= 30) "Выходи сейчас" else "Выходи через ${Timeline.formatLeft(leaveSec)} (в ${j.leaveAt.format(HM)})",
+                    when {
+                        leaveSec <= 30 -> "Выходи сейчас"
+                        leaveSec > 3 * 3600 -> "Выходи в ${j.leaveAt.format(HM)}${dayWord(j.leaveAt, now)}"
+                        else -> "Выходи через ${Timeline.formatLeft(leaveSec)} (в ${j.leaveAt.format(HM)})"
+                    },
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -366,7 +426,8 @@ private fun BusStep(tl: Router.TimedLeg, now: LocalDateTime) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "${untilText(now, tl.board)} · ${tl.board.format(HM)}",
+                     if (Duration.between(now, tl.board).seconds > 3 * 3600) "в ${tl.board.format(HM)}${dayWord(tl.board, now)}"
+                    else "${untilText(now, tl.board)} · ${tl.board.format(HM)}",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = cs.primary,

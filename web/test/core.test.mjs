@@ -1,7 +1,7 @@
 // Тесты логики сайта: node --test web/test
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { T, buildTimeline, formatLeft, parseLessons, Network, findPlans, schedulePlan, rankJourneys } from '../js/core.js';
+import { T, buildTimeline, formatLeft, parseLessons, Network, findPlans, schedulePlan, rankJourneys, arriveBy } from '../js/core.js';
 
 const L = (order, s, e, title = `Предмет ${order}`, replace) =>
   ({ title, cabinet: '101', teacher: 'Иванов И.И.', order, startTime: s + ':00', endTime: e + ':00', replace });
@@ -109,4 +109,34 @@ test('маршруты: время, сортировка, склейка ном�
   assert.ok(r.length > 0);
   assert.deepEqual(r.map((j) => j.durationMin), [...r.map((j) => j.durationMin)].sort((a, b) => a - b));
   assert.ok(r.find((j) => j.legs.length === 2).alternatives.length > 0);
+});
+
+test('приехать к: самый поздний выезд, успеваем к сроку', async () => {
+  const day = T.parseIso('2026-09-30');
+  const now = day + 22 * 3600e3 - 864e5; // вечер накануне
+  const source = { async next(stopId, routeId, fwd, after) {
+    // автобусы каждые 10 минут с 06:00 следующего дня
+    let t = day + 6 * 3600e3 + (routeId === 3 ? 5 * 60e3 : 0);
+    while (t < after) t += 10 * 60e3;
+    return { time: t, live: false };
+  } };
+  const deadline = day + (8 * 60 + 10) * 60e3; // к 08:10
+  const plans = findPlans(net(), home, college);
+  const js = (await Promise.all(plans.map((p) => arriveBy(p, deadline, now, source)))).filter(Boolean);
+  assert.ok(js.length > 0);
+  for (const j of js) {
+    assert.ok(j.arrive <= deadline, 'успеваем');
+    // следующий автобус (на 10 мин позже) уже опоздал бы — значит выезд самый поздний
+    assert.ok(j.arrive > deadline - 10 * 60e3 - 60e3, 'не выезжаем слишком рано');
+  }
+  const r = rankJourneys(js, 'latest', now);
+  assert.deepEqual(r.map((j) => j.leaveAt), [...r.map((j) => j.leaveAt)].sort((a, b) => b - a));
+});
+
+test('приехать к: нельзя выехать в прошлом', async () => {
+  const now = T.parseIso('2026-09-30') + 8 * 3600e3;
+  const source = { async next(s, r, f, after) { return { time: after + 60e3, live: true }; } };
+  const plans = findPlans(net(), home, college);
+  const j = await arriveBy(plans[0], now + 5 * 60e3, now, source);
+  assert.equal(j, null); // за 5 минут не доехать
 });
