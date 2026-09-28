@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Календарь с галочкой: 108dp холст, безопасная зона 66dp по центру -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- корпус календаря -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,38h36a4,4 0 0 1 4,4v28a4,4 0 0 1 -4,4h-36a4,4 0 0 1 -4,-4v-28a4,4 0 0 1 4,-4z" />
+    <!-- шапка -->
+    <path
+        android:fillColor="#D6E8C2"
+        android:pathData="M36,38h36a4,4 0 0 1 4,4v6h-44v-6a4,4 0 0 1 4,-4z" />
+    <!-- кольца -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42,33h4v9h-4z M62,33h4v9h-4z" />
+    <!-- галочка -->
+    <path
+        android:strokeColor="#4F6F2F"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M45,60l6,6l12,-12" />
+</vector>
