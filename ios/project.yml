@@ -1,0 +1,51 @@
+name: Tkpst
+options:
+  bundleIdPrefix: ru.yami
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  TkpstCore:
+    path: Core
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  Tkpst:
+    type: application
+    platform: iOS
+    sources:
+      - App/Sources
+      - App/Resources
+    dependencies:
+      - package: TkpstCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ru.yami.tkpst
+        PRODUCT_NAME: Tkpst
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_STYLE: Manual
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: ТКПСТ
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIApplicationSupportsIndirectInputEvents: true
+        NSLocationWhenInUseUsageDescription: Чтобы определить домашний адрес и найти ближайшие остановки.
+        UIBackgroundModes: [fetch]
+        BGTaskSchedulerPermittedIdentifiers: [ru.yami.tkpst.sync]
+        ITSAppUsesNonExemptEncryption: false

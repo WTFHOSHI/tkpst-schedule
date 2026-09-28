@@ -49,7 +49,10 @@ jobs:
         working-directory: ios/Core
         run: |
           set -o pipefail
-          swift test 2>&1 | xcbeautify --renderer github-actions
+          swift test 2>&1 | tee test.log | xcbeautify --renderer github-actions
+          summary=$(grep -E "Executed [0-9]+ tests?" test.log | tail -1)
+          echo "::notice title=XCTest::$summary"
+          echo "$summary" | grep -q "with 0 failures"
 
       - name: Generate Xcode project
         if: hashFiles('ios/project.yml') != ''

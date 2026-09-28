@@ -6,3 +6,8 @@ local.properties
 .DS_Store
 captures/
 .kotlin/
+ios/build/
+ios/Payload/
+ios/Tkpst.xcodeproj/
+ios/App/Info.plist
+ios/Core/.build/
