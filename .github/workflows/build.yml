@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   android:
@@ -102,6 +104,31 @@ jobs:
         with:
           name: ios
           path: tkpst-schedule-${{ github.run_number }}.ipa
+
+  # Сайт для iPhone (открывается с ярлыка) — GitHub Pages
+  web:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tests (логика сайта)
+        run: node --test web/test/
+      - name: Prepare site
+        run: |
+          mkdir -p _site
+          cp -r web/index.html web/style.css web/sw.js web/manifest.webmanifest web/js web/icons _site/
+          # новая версия кэша офлайн-оболочки на каждую сборку
+          sed -i "s/tkpst-shell-v1/tkpst-shell-${{ github.run_number }}/" _site/sw.js
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
 
   release:
     needs: [android, ios]
