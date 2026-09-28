@@ -68,6 +68,7 @@ public final class Network: @unchecked Sendable {
 public struct Walk: Equatable, Sendable {
     public let meters: Int
     public let minutes: Double
+    public init(meters: Int, minutes: Double) { self.meters = meters; self.minutes = minutes }
 }
 
 public struct RideLeg: Equatable, Sendable {
