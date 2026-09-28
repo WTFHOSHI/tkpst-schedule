@@ -71,7 +71,6 @@ final class BusVM: ObservableObject {
         let dir = direction, sortMode = sort
         task = Task {
             if force { await transit.invalidateLive() }
-            var netLoaded = false
             do {
                 let net = try await transit.network { done, total in
                     Task { @MainActor [weak self] in
@@ -80,7 +79,6 @@ final class BusVM: ObservableObject {
                         self.state = .loadingNetwork(done, total)
                     }
                 }
-                netLoaded = true
                 if Task.isCancelled { return }
                 let (from, to) = dir == .toCollege ? (home.point, Geo.college) : (Geo.college, home.point)
                 let key = "\(net.data.date)|\(dir.rawValue)|\(home.point.lat),\(home.point.lon)"
@@ -94,8 +92,7 @@ final class BusVM: ObservableObject {
                 state = result
             } catch {
                 if Task.isCancelled { return }
-                state = .error(netLoaded ? "Не удалось получить данные об автобусах."
-                                         : "Не удалось загрузить маршруты. Проверь интернет.")
+                state = .error("Не удалось загрузить маршруты. Проверь интернет.")
             }
             refreshing = false
         }

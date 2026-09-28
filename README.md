@@ -1,6 +1,6 @@
 # ТКПСТ Расписание
 
-Android-приложение с расписанием пар группы **ИС-25-3С** (ТКПСТ, Тюмень).
+Приложение для **Android и iPhone** с расписанием пар группы **ИС-25-3С** (ТКПСТ, Тюмень) и автобусами Тюмени.
 
 ## Что умеет (этап 1)
 
@@ -31,15 +31,26 @@ Android-приложение с расписанием пар группы **И�
 
 - Пары: [OpenScheduleApi](https://github.com/ThisIsHyum/OpenScheduleApi), сервер `https://api.thisishyum.ru/schedule_api/tyumen`
   (тот же, что использует [osa.vstor-tech.ru](https://osa.vstor-tech.ru)). Группа ИС-25-3С — id 196.
-- Время пар и перерывов — официальное «Расписание звонков» (`Bells.kt`), а не время из API.
+- Время пар и перерывов — официальное «Расписание звонков» (`Bells.kt` / `Bells.swift`), а не время из API.
 
 ## Сборка
 
-APK собирается автоматически в GitHub Actions на каждый push в `main`:
-- **Releases** → последняя «Сборка N» → `tkpst-schedule-N.apk` (удобно скачивать с телефона);
-- или **Actions** → последний запуск → Artifacts.
+GitHub Actions на каждый push в `main` собирает обе версии и кладёт их в **Releases → «Сборка N»**:
+- `tkpst-schedule-N.apk` — Android;
+- `tkpst-schedule-N.ipa` — iPhone (без подписи, для AltStore / SideStore).
 
-Локально: Android Studio → Open → эта папка (или `gradle assembleDebug`).
+Локально: Android — Android Studio → Open → эта папка. iOS — `cd ios && xcodegen generate`, открыть `Tkpst.xcodeproj` в Xcode.
+
+## Установка на iPhone (AltStore, бесплатно)
+
+1. На компьютере (Windows или Mac) установи **AltServer** с [altstore.io](https://altstore.io) и через него поставь **AltStore** на iPhone (понадобится Apple ID; на Windows — iTunes и iCloud с сайта Apple).
+2. На iPhone: Настройки → Основные → VPN и управление устройством → доверять своему Apple ID. На iOS 16+ включи «Режим разработчика» (Настройки → Конфиденциальность и безопасность).
+3. На iPhone открой в Safari страницу **Releases**, скачай `tkpst-schedule-N.ipa`, нажми «Поделиться» → **AltStore** (или в AltStore: My Apps → «+» → выбрать файл).
+4. Бесплатная подпись живёт 7 дней: AltStore продлевает её сам, когда iPhone и компьютер с AltServer в одной Wi‑Fi сети (или нажми Refresh All).
+
+Обновление: скачай новую `.ipa` и поставь так же — данные и адрес сохранятся.
+
+Особенности iOS: фоновое обновление расписания запускает сама iOS (обычно раз в несколько часов, если приложение открывали недавно). В остальном — всё как на Android.
 
 ## Структура
 
@@ -49,5 +60,10 @@ app/src/main/java/ru/yami/tkpst/
   data/Timeline.kt           пары + классные часы + перерывы, формат таймеров
   data/ScheduleRepository.kt запросы к API и кэш
   ui/ScheduleScreen.kt       экран расписания с таймерами
-  ui/HomeScreen.kt, BusesScreen.kt, SettingsScreen.kt
+  ui/HomeScreen.kt, BusScreen.kt, AddressScreen.kt, SettingsScreen.kt
+  data/transit/Router.kt     поиск маршрутов (прямые + 1 пересадка)
+ios/
+  project.yml                проект XcodeGen
+  Core/                      Swift-пакет: звонки, перерывы, маршруты + тесты
+  App/Sources/               SwiftUI-экраны, API, кэш, уведомления, GPS
 ```
