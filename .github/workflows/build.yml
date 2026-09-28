@@ -24,7 +24,21 @@ jobs:
           gradle-version: 8.11.1
 
       - name: Tests + build
-        run: gradle testDebugUnitTest assembleDebug --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle testDebugUnitTest assembleDebug --no-daemon --stacktrace 2>&1 | tee gradle.log
+
+      - name: Report errors
+        if: failure()
+        run: |
+          {
+            grep -E "^e: |What went wrong|FAILED|Caused by|Exception" -A3 gradle.log | head -60
+            for f in app/build/test-results/testDebugUnitTest/*.xml; do
+              grep -A6 "<failure" "$f" | head -20
+            done
+          } > err.txt || true
+          msg=$(sed 's/%/%25/g' err.txt | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Gradle::$msg"
 
       - name: Rename APK
         run: |
