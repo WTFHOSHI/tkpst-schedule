@@ -9,10 +9,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onRoot
+import android.graphics.Canvas
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.junit.Rule
@@ -39,7 +39,7 @@ import java.time.LocalTime
 class ScheduleScreenshotTest {
 
     @get:Rule
-    val rule = createComposeRule()
+    val rule = createAndroidComposeRule<ComponentActivity>()
 
     /** Вторник, 29.09.2026 — реальные пары ИС-25-3С из API. */
     private val day = LocalDate.of(2026, 9, 29)
@@ -53,11 +53,15 @@ class ScheduleScreenshotTest {
     )
 
     private fun shot(name: String, now: LocalTime, theme: ThemeMode = ThemeMode.LIGHT) {
+        var contentHeight = 0
         rule.setContent {
             AppTheme(theme) {
                 Surface(color = MaterialTheme.colorScheme.background) {
                     Column(
-                        Modifier.fillMaxWidth().padding(16.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .onGloballyPositioned { contentHeight = it.size.height }
+                            .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
@@ -78,7 +82,13 @@ class ScheduleScreenshotTest {
                 }
             }
         }
-        val bmp = rule.onRoot().captureToImage().asAndroidBitmap()
+        rule.waitForIdle()
+        // Рисуем окно в картинку (как это делают Roborazzi/Paparazzi) и обрезаем по содержимому.
+        val view = rule.activity.window.decorView
+        val full = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(full))
+        val h = contentHeight.coerceIn(1, full.height)
+        val bmp = Bitmap.createBitmap(full, 0, 0, full.width, h)
         val dir = File("build/screenshots").apply { mkdirs() }
         File(dir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
