@@ -49,6 +49,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import ru.yami.tkpst.data.BreakKind
 import ru.yami.tkpst.data.Entry
 import ru.yami.tkpst.data.LessonInfo
@@ -83,6 +85,9 @@ fun ScheduleScreen(vm: ScheduleViewModel, onBack: () -> Unit, onSettings: () -> 
     val nowZ by rememberTyumenNow()
     val today = nowZ.toLocalDate()
     val now = nowZ.toLocalTime()
+
+    // Свежие данные при каждом открытии экрана / возврате в приложение.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.onResume() }
 
     // Если приложение открыто в полночь — переезжаем на новый день сами.
     val lastToday = remember { arrayOf(today) }

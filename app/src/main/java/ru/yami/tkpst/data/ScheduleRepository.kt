@@ -116,6 +116,15 @@ class ScheduleRepository(context: Context) {
         }
     }
 
+    /** Тихо обновляет кэш для списка дней. true — хотя бы один день скачан с сервера. */
+    suspend fun prefetch(dates: List<LocalDate>): Boolean {
+        var any = false
+        for (d in dates) {
+            runCatching { load(d) }.onSuccess { if (!it.offline) any = true }
+        }
+        return any
+    }
+
     fun clearCache() {
         val keep = prefs.getInt("group_id", -1)
         prefs.edit().clear().apply()

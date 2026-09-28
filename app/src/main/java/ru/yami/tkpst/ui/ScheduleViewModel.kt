@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import ru.yami.tkpst.App
 import ru.yami.tkpst.data.DayData
 import ru.yami.tkpst.data.Entry
+import ru.yami.tkpst.data.ScheduleSyncWorker
 import ru.yami.tkpst.data.TYUMEN
 import ru.yami.tkpst.data.Timeline
 import java.time.DayOfWeek
@@ -42,9 +43,19 @@ class ScheduleViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     private var job: Job? = null
+    private var prefetchJob: Job? = null
 
-    init {
+    /**
+     * Вызывается при каждом открытии/возврате в приложение:
+     * обновляет выбранный день и тихо докачивает текущую и следующую неделю.
+     */
+    fun onResume() {
         load(selected)
+        if (prefetchJob?.isActive != true) {
+            prefetchJob = viewModelScope.launch {
+                repo.prefetch(ScheduleSyncWorker.weeksToSync(today()).filter { it != selected })
+            }
+        }
     }
 
     fun select(date: LocalDate) {
