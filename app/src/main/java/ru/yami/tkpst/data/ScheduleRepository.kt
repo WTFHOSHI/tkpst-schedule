@@ -8,10 +8,11 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
-import java.net.HttpURLConnection
-import java.net.URL
 import java.net.URLEncoder
 import java.time.LocalDate
+
+/** Что изменилось в дне по сравнению с сохранённой версией. */
+enum class DayChange { PUBLISHED, CHANGED }
 
 /** Результат загрузки одного дня. */
 data class DayData(
@@ -22,6 +23,7 @@ data class DayData(
     val savedAt: Long,
     /** Дата позже последнего опубликованного дня — расписания ещё нет. */
     val notPublished: Boolean,
+    val change: DayChange? = null,
 )
 
 class ScheduleRepository(context: Context) {
@@ -32,26 +34,14 @@ class ScheduleRepository(context: Context) {
         const val COLLEGE_ID = 1
         /** Проверено вручную 28.09.2026: ИС-25-3С, кампус «Луначарского 2 курс». */
         const val FALLBACK_GROUP_ID = 196
+        /** Сколько дней хранить прошедшее расписание. */
+        const val KEEP_DAYS = 14L
     }
 
     private val prefs = context.getSharedPreferences("schedule_cache", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
-    private fun get(path: String): String {
-        val conn = URL(BASE + path).openConnection() as HttpURLConnection
-        conn.connectTimeout = 10_000
-        conn.readTimeout = 15_000
-        conn.setRequestProperty("Accept", "application/json")
-        try {
-            val code = conn.responseCode
-            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val body = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-            if (code !in 200..299) throw ApiException("Сервер ответил $code")
-            return body
-        } finally {
-            conn.disconnect()
-        }
-    }
+    private fun get(path: String): String = Http.get(BASE + path)
 
     private fun normalize(s: String) = s.replace(" ", "").uppercase()
 
@@ -104,25 +94,55 @@ class ScheduleRepository(context: Context) {
                 val last = lastPublished(gid)
                 notPublished = last != null && date.isAfter(last)
             }
+            var change: DayChange? = null
             if (!notPublished) {
+                val old = cached(date)
+                val baseline = prefs.getBoolean("baseline", false)
+                change = when {
+                    !baseline -> null
+                    old == null -> if (lessons.isNotEmpty()) DayChange.PUBLISHED else null
+                    old.lessons != lessons -> DayChange.CHANGED
+                    else -> null
+                }
                 prefs.edit()
                     .putString(cacheKey(date), body)
                     .putLong(cacheKey(date) + "_at", now)
+                    .putBoolean("baseline", true)
                     .apply()
             }
-            DayData(lessons, offline = false, savedAt = now, notPublished = notPublished)
+            DayData(lessons, offline = false, savedAt = now, notPublished = notPublished, change = change)
         } catch (e: Exception) {
             cached(date) ?: throw e
         }
     }
 
-    /** Тихо обновляет кэш для списка дней. true — хотя бы один день скачан с сервера. */
-    suspend fun prefetch(dates: List<LocalDate>): Boolean {
+    /**
+     * Тихо обновляет кэш для списка дней и возвращает найденные изменения
+     * (только для сегодняшнего и будущих дней). null — сеть недоступна.
+     */
+    suspend fun prefetch(dates: List<LocalDate>, today: LocalDate): Map<LocalDate, DayChange>? {
         var any = false
+        val changes = sortedMapOf<LocalDate, DayChange>()
         for (d in dates) {
-            runCatching { load(d) }.onSuccess { if (!it.offline) any = true }
+            runCatching { load(d) }.onSuccess {
+                if (!it.offline) any = true
+                if (it.change != null && !d.isBefore(today)) changes[d] = it.change
+            }
         }
-        return any
+        cleanup(today)
+        return if (any) changes else null
+    }
+
+    /** Удаляет дни старше двух недель — кэш не растёт. */
+    private fun cleanup(today: LocalDate) {
+        val limit = today.minusDays(KEEP_DAYS)
+        val editor = prefs.edit()
+        for (key in prefs.all.keys) {
+            if (!key.startsWith("day_")) continue
+            val d = runCatching { LocalDate.parse(key.removePrefix("day_").take(10)) }.getOrNull() ?: continue
+            if (d.isBefore(limit)) editor.remove(key)
+        }
+        editor.apply()
     }
 
     fun clearCache() {
@@ -131,5 +151,3 @@ class ScheduleRepository(context: Context) {
         if (keep > 0) prefs.edit().putInt("group_id", keep).apply()
     }
 }
-
-class ApiException(message: String) : Exception(message)

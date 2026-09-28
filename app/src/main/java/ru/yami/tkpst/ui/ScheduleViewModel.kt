@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import ru.yami.tkpst.App
 import ru.yami.tkpst.data.DayData
 import ru.yami.tkpst.data.Entry
+import ru.yami.tkpst.data.ScheduleNotifier
 import ru.yami.tkpst.data.ScheduleSyncWorker
 import ru.yami.tkpst.data.TYUMEN
 import ru.yami.tkpst.data.Timeline
@@ -53,7 +54,9 @@ class ScheduleViewModel(app: Application) : AndroidViewModel(app) {
         load(selected)
         if (prefetchJob?.isActive != true) {
             prefetchJob = viewModelScope.launch {
-                repo.prefetch(ScheduleSyncWorker.weeksToSync(today()).filter { it != selected })
+                val t = today()
+                val changes = repo.prefetch(ScheduleSyncWorker.weeksToSync(t).filter { it != selected }, t)
+                if (changes != null) ScheduleNotifier.notify(getApplication(), changes)
             }
         }
     }

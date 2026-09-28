@@ -32,7 +32,7 @@ import ru.yami.tkpst.data.ThemeMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(settings: Settings, onClearCache: () -> Unit, onBack: () -> Unit) {
+fun SettingsScreen(settings: Settings, onClearCache: () -> Unit, onEditAddress: () -> Unit, onBack: () -> Unit) {
     val ctx = LocalContext.current
     Scaffold(
         topBar = {
@@ -91,10 +91,16 @@ fun SettingsScreen(settings: Settings, onClearCache: () -> Unit, onBack: () -> U
 
             HorizontalDivider(Modifier.padding(vertical = 16.dp))
             SectionTitle("Автобусы")
+            Text("Домашний адрес: " + (settings.home?.label ?: "не указан"))
             Text(
-                "Домашний адрес и маршруты появятся на втором этапе.",
+                "Колледж: Луначарского, 19. Данные об автобусах — Тюменьгортранс (онлайн по GPS).",
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
             )
+            OutlinedButton(onClick = onEditAddress, modifier = Modifier.padding(top = 12.dp, bottom = 24.dp)) {
+                Text(if (settings.home == null) "Указать домашний адрес" else "Изменить домашний адрес")
+            }
         }
     }
 }

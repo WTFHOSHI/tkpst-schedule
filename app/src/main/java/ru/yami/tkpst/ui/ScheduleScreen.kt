@@ -468,7 +468,7 @@ private fun BreakCard(e: Entry.Break, phase: Phase, now: LocalTime) {
     ) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("☕ $label", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
                 Text(
                     "${e.start.format(HM)}–${e.end.format(HM)}",
                     style = MaterialTheme.typography.labelMedium,

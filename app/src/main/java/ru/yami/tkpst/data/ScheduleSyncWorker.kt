@@ -21,8 +21,10 @@ class ScheduleSyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
 
     override suspend fun doWork(): Result {
         val repo = (applicationContext as App).repository
-        val ok = repo.prefetch(weeksToSync(LocalDate.now(TYUMEN)))
-        return if (ok) Result.success() else Result.retry()
+        val today = LocalDate.now(TYUMEN)
+        val changes = repo.prefetch(weeksToSync(today), today) ?: return Result.retry()
+        ScheduleNotifier.notify(applicationContext, changes)
+        return Result.success()
     }
 
     companion object {

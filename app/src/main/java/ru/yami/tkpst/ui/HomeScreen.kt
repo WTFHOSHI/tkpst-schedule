@@ -79,7 +79,7 @@ fun HomeScreen(onOpen: (String) -> Unit) {
             )
             BigButton(
                 title = "Автобусы",
-                subtitle = "Дом ↔ Луначарского, 19 · скоро",
+                subtitle = "Дом ↔ Луначарского, 19 · онлайн",
                 icon = Icons.Filled.Place,
                 container = MaterialTheme.colorScheme.secondaryContainer,
                 content = MaterialTheme.colorScheme.onSecondaryContainer,
