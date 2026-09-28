@@ -63,9 +63,9 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
-private enum class Phase { PAST, NOW, FUTURE, OTHER_DAY }
+internal enum class Phase { PAST, NOW, FUTURE, OTHER_DAY }
 
-private fun phaseOf(e: Entry, isToday: Boolean, now: LocalTime): Phase = when {
+internal fun phaseOf(e: Entry, isToday: Boolean, now: LocalTime): Phase = when {
     !isToday -> Phase.OTHER_DAY
     now >= e.end -> Phase.PAST
     now >= e.start -> Phase.NOW
@@ -312,7 +312,7 @@ private fun DayContent(vm: ScheduleViewModel, today: LocalDate, now: LocalTime) 
 }
 
 @Composable
-private fun DaySummary(entries: List<Entry>, now: LocalTime) {
+internal fun DaySummary(entries: List<Entry>, now: LocalTime) {
     val last = entries.last()
     val text = when {
         now < entries.first().start ->
@@ -359,7 +359,7 @@ private fun TimerLine(e: Entry, phase: Phase, now: LocalTime, startWord: String,
 }
 
 @Composable
-private fun PairCard(e: Entry.Pair, phase: Phase, now: LocalTime) {
+internal fun PairCard(e: Entry.Pair, phase: Phase, now: LocalTime) {
     val cs = MaterialTheme.colorScheme
     val active = phase == Phase.NOW
     Surface(
@@ -426,7 +426,7 @@ private fun LessonBlock(l: LessonInfo) {
 }
 
 @Composable
-private fun ClassHourCard(e: Entry.ClassHour, phase: Phase, now: LocalTime) {
+internal fun ClassHourCard(e: Entry.ClassHour, phase: Phase, now: LocalTime) {
     val cs = MaterialTheme.colorScheme
     Surface(
         shape = RoundedCornerShape(20.dp),
@@ -449,7 +449,7 @@ private fun ClassHourCard(e: Entry.ClassHour, phase: Phase, now: LocalTime) {
 }
 
 @Composable
-private fun BreakCard(e: Entry.Break, phase: Phase, now: LocalTime) {
+internal fun BreakCard(e: Entry.Break, phase: Phase, now: LocalTime) {
     val cs = MaterialTheme.colorScheme
     val label = when (e.kind) {
         BreakKind.SHORT -> "Перерыв ${e.minutes} мин"
