@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK + IPA
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  android:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,13 +31,73 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: tkpst-schedule-apk
+          name: android
           path: tkpst-schedule-${{ github.run_number }}.apk
 
-      - name: Publish release (APK for phone download)
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tools
+        run: |
+          which xcbeautify || brew install xcbeautify
+          which xcodegen || brew install xcodegen
+          xcodebuild -version
+
+      - name: Core tests (логика расписания и маршрутов)
+        working-directory: ios/Core
+        run: |
+          set -o pipefail
+          swift test 2>&1 | xcbeautify --renderer github-actions
+
+      - name: Generate Xcode project
+        if: hashFiles('ios/project.yml') != ''
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Build (unsigned, для AltStore)
+        if: hashFiles('ios/project.yml') != ''
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild -project Tkpst.xcodeproj -scheme Tkpst -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            build 2>&1 | xcbeautify --renderer github-actions
+
+      - name: Package IPA
+        if: hashFiles('ios/project.yml') != ''
+        working-directory: ios
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/Tkpst.app Payload/
+          zip -qry ../tkpst-schedule-${{ github.run_number }}.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('ios/project.yml') != ''
+        with:
+          name: ios
+          path: tkpst-schedule-${{ github.run_number }}.ipa
+
+  release:
+    needs: [android, ios]
+    if: always() && needs.android.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Publish release (APK + IPA)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: Сборка ${{ github.run_number }}
-          body: Автоматическая сборка из ${{ github.sha }}
-          files: tkpst-schedule-${{ github.run_number }}.apk
+          body: |
+            Автоматическая сборка из ${{ github.sha }}
+            - `.apk` — Android
+            - `.ipa` — iPhone (ставится через AltStore / SideStore)
+          files: out/*
