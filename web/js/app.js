@@ -416,7 +416,13 @@ function buses() {
   };
   tick();
   refreshBus(true, true);
-  const timer = setInterval(() => { if (!document.hidden) refreshBus(true); }, 30000);
+  // «Сейчас» — каждые 30 с (онлайн), для «выехать в / приехать к» хватит раз в 2 минуты
+  let lastAuto = Date.now();
+  const timer = setInterval(() => {
+    if (document.hidden) return;
+    const every = bus.when.mode === 'now' ? 30000 : 120000;
+    if (Date.now() - lastAuto >= every) { lastAuto = Date.now(); refreshBus(true); }
+  }, 5000);
   const onVis = () => { if (!document.hidden) refreshBus(true); };
   document.addEventListener('visibilitychange', onVis);
   cleanup = () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVis); };

@@ -1,7 +1,11 @@
 package ru.yami.tkpst.data.transit
 
 import android.content.Context
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -124,24 +128,47 @@ class TransitRepository(context: Context) {
         return dt
     }
 
+    /**
+     * Все запросы к Тюменьгортрансу за прогнозами и графиком идут не больше 6 одновременно,
+     * а одинаковые запросы не дублируются — иначе сервер начинает тормозить и отбивать запросы.
+     */
+    private val requestLimit = Semaphore(6)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private suspend fun limitedGet(url: String): String =
+        requestLimit.withPermit { Http.get(url, timeoutMs = 10_000, connectMs = 8_000) }
+
+    private val liveInFlight = ConcurrentHashMap<Int, Deferred<List<LiveArrival>?>>()
+
     /** Все ближайшие автобусы на остановке по данным GPS. Кэш 20 секунд. */
-    suspend fun live(stopId: Int, force: Boolean = false): List<LiveArrival> = withContext(Dispatchers.IO) {
+    suspend fun live(stopId: Int, force: Boolean = false): List<LiveArrival> {
         val c = predictions[stopId]
-        if (!force && c != null && System.currentTimeMillis() - c.at < PREDICTION_TTL_MS) return@withContext c.items
-        val now = LocalDateTime.now(TYUMEN)
-        val items = runCatching {
-            json.decodeFromString<TgtList<TgtPrediction>>(Http.get("$BASE/prediction/?checkpoint_id=$stopId", timeoutMs = 8_000, connectMs = 6_000)).objects
-                .flatMap { p ->
-                    p.order.mapNotNull { o ->
-                        val t = o.prediction.time ?: return@mapNotNull null
-                        toDateTime(t, now)?.let { LiveArrival(p.routeId, it, o.prediction.precise) }
-                    }
+        if (!force && c != null && System.currentTimeMillis() - c.at < PREDICTION_TTL_MS) return c.items
+        // LAZY + start(): запрос стартует только после того, как попал в карту — без гонок.
+        val d = liveInFlight.getOrPut(stopId) {
+            scope.async(start = CoroutineStart.LAZY) {
+                run {
+                    val now = LocalDateTime.now(TYUMEN)
+                    runCatching {
+                        json.decodeFromString<TgtList<TgtPrediction>>(limitedGet("$BASE/prediction/?checkpoint_id=$stopId")).objects
+                            .flatMap { p ->
+                                p.order.mapNotNull { o ->
+                                    val t = o.prediction.time ?: return@mapNotNull null
+                                    toDateTime(t, now)?.let { LiveArrival(p.routeId, it, o.prediction.precise) }
+                                }
+                            }
+                            .filter { !it.time.isBefore(now.minusMinutes(1)) }
+                            .sortedBy { it.time }
+                    }.getOrNull()
                 }
-                .filter { !it.time.isBefore(now.minusMinutes(1)) }
-                .sortedBy { it.time }
-        }.getOrElse { hadNetworkErrors = true; c?.items ?: emptyList() }
-        predictions[stopId] = Cached(System.currentTimeMillis(), items)
-        items
+            }
+        }
+        d.start()
+        val items = try { d.await() } finally { liveInFlight.remove(stopId, d) }
+        if (items == null) hadNetworkErrors = true
+        val result = items ?: c?.items ?: emptyList()
+        predictions[stopId] = Cached(System.currentTimeMillis(), result)
+        return result
     }
 
     /** Сбросить кэш прогнозов (кнопка «обновить» и таймер 30 с). */
@@ -149,32 +176,61 @@ class TransitRepository(context: Context) {
 
     // ---------------- Расписание по графику ----------------
 
+    /**
+     * График остановки на день — ОДНИМ запросом сразу для всех номеров (как на сайте tgt72.ru).
+     * null — не удалось загрузить; такие неудачи не повторяем минуту.
+     */
+    private data class StopDay(val at: Long, val byRoute: Map<Int, List<TgtTimes>>?)
+    private val stopDays = ConcurrentHashMap<String, Deferred<StopDay>>()
+
+    private suspend fun stopDay(stopId: Int, date: LocalDate): Map<Int, List<TgtTimes>>? {
+        val key = "$stopId/$date"
+        val existing = stopDays[key]
+        if (existing != null && existing.isCompleted) {
+            val v = existing.await()
+            if (v.byRoute == null && System.currentTimeMillis() - v.at > 60_000) stopDays.remove(key, existing)
+        }
+        val d = stopDays.getOrPut(key) {
+            scope.async {
+                val map = runCatching {
+                    json.decodeFromString<TgtList<TgtTimes>>(
+                        limitedGet("$BASE/times/?checkpoint_id=$stopId&date=${date.format(YMD)}")
+                    ).objects.groupBy { it.routeId }
+                }.getOrNull()
+                StopDay(System.currentTimeMillis(), map)
+            }
+        }
+        return d.await().byRoute
+    }
+
     private val planned = ConcurrentHashMap<String, List<LocalDateTime>>()
-    /** Неудачные запросы не повторяем минуту — иначе «Приехать к» ждёт таймауты по кругу. */
-    private val plannedFailedAt = ConcurrentHashMap<String, Long>()
+    private val routeFallbackFailedAt = ConcurrentHashMap<String, Long>()
 
     /** Время по графику для маршрута на остановке (кэш на день). */
-    suspend fun planned(stopId: Int, routeId: Int, forward: Boolean, date: LocalDate): List<LocalDateTime> =
-        withContext(Dispatchers.IO) {
-            val key = "$stopId/$routeId/$forward/$date"
-            planned[key]?.let { return@withContext it }
-            plannedFailedAt[key]?.let { if (System.currentTimeMillis() - it < 60_000) { hadNetworkErrors = true; return@withContext emptyList() } }
-            val list = runCatching {
-                val objs = json.decodeFromString<TgtList<TgtTimes>>(
-                    Http.get("$BASE/times/?checkpoint_id=$stopId&route_id=$routeId&date=${date.format(YMD)}", timeoutMs = 8_000, connectMs = 6_000)
-                ).objects
-                val matching = objs.filter { it.isForward == forward }.ifEmpty { objs }
-                matching.flatMap { it.times }
-                    .mapNotNull { runCatching { date.atTime(LocalTime.parse(it)) }.getOrNull() }
-                    .sorted()
-            }.getOrElse {
-                hadNetworkErrors = true
-                plannedFailedAt[key] = System.currentTimeMillis()
-                null
-            } ?: return@withContext emptyList()
-            planned[key] = list
-            list
+    suspend fun planned(stopId: Int, routeId: Int, forward: Boolean, date: LocalDate): List<LocalDateTime> {
+        val key = "$stopId/$routeId/$forward/$date"
+        planned[key]?.let { return it }
+        val day = stopDay(stopId, date)
+        if (day == null) { hadNetworkErrors = true; return emptyList() }
+        var objs = day[routeId].orEmpty()
+        if (objs.isEmpty()) {
+            // В общем графике остановки этого номера нет — запасной запрос именно по маршруту.
+            val failed = routeFallbackFailedAt[key]
+            if (failed == null || System.currentTimeMillis() - failed > 60_000) {
+                objs = runCatching {
+                    json.decodeFromString<TgtList<TgtTimes>>(
+                        limitedGet("$BASE/times/?checkpoint_id=$stopId&route_id=$routeId&date=${date.format(YMD)}")
+                    ).objects
+                }.getOrElse { routeFallbackFailedAt[key] = System.currentTimeMillis(); hadNetworkErrors = true; emptyList() }
+            }
         }
+        val matching = objs.filter { it.isForward == forward }.ifEmpty { objs }
+        val list = matching.flatMap { it.times }
+            .mapNotNull { runCatching { date.atTime(LocalTime.parse(it)) }.getOrNull() }
+            .sorted()
+        planned[key] = list
+        return list
+    }
 
     /**
      * Источник отправлений для роутера: сначала онлайн-прогноз,

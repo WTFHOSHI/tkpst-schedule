@@ -185,8 +185,18 @@ async function downloadNetwork(onProgress) {
 // Были ли сетевые ошибки при последнем обновлении (сервер недоступен, например из-за VPN)
 export const netHealth = { errors: false };
 
-// Онлайн-прогнозы (кэш 20 с)
+// Запросы за прогнозами и графиком — не больше 6 одновременно (иначе сервер тормозит и отбивает)
+let active = 0;
+const waiting = [];
+async function limited(fn) {
+  if (active >= 6) await new Promise((r) => waiting.push(r));
+  active++;
+  try { return await fn(); } finally { active--; const next = waiting.shift(); if (next) next(); }
+}
+
+// Онлайн-прогнозы (кэш 20 с, одинаковые запросы не дублируются)
 const live = new Map();
+const liveInFlight = new Map();
 
 function predToT(s, now) {
   const [h, m, sec = 0] = s.split(':').map(Number);
@@ -198,40 +208,71 @@ function predToT(s, now) {
 export async function liveAt(stopId) {
   const c = live.get(stopId);
   if (c && Date.now() - c.at < 20000) return c.items;
-  const now = T.now();
-  let items = c ? c.items : [];
-  try {
-    const j = await getJson(`${TGT}/prediction/?checkpoint_id=${stopId}`, 8000);
-    items = ((j && j.objects) || []).flatMap((p) => (p.order || [])
-      .filter((o) => o.prediction && o.prediction.time)
-      .map((o) => ({ routeId: p.route_id, time: predToT(o.prediction.time, now), precise: o.prediction.precise !== false })))
-      .filter((a) => a.time >= now - 60e3)
-      .sort((a, b) => a.time - b.time);
-  } catch { netHealth.errors = true; /* оставляем старые */ }
-  live.set(stopId, { at: Date.now(), items });
-  return items;
+  if (!liveInFlight.has(stopId)) {
+    liveInFlight.set(stopId, (async () => {
+      const now = T.now();
+      try {
+        const j = await limited(() => getJson(`${TGT}/prediction/?checkpoint_id=${stopId}`, 10000));
+        return ((j && j.objects) || []).flatMap((p) => (p.order || [])
+          .filter((o) => o.prediction && o.prediction.time)
+          .map((o) => ({ routeId: p.route_id, time: predToT(o.prediction.time, now), precise: o.prediction.precise !== false })))
+          .filter((a) => a.time >= now - 60e3)
+          .sort((a, b) => a.time - b.time);
+      } catch { return null; }
+    })().finally(() => liveInFlight.delete(stopId)));
+  }
+  const items = await liveInFlight.get(stopId) ?? null;
+  if (items == null) netHealth.errors = true;
+  const result = items ?? (c ? c.items : []);
+  live.set(stopId, { at: Date.now(), items: result });
+  return result;
 }
 
 export function invalidateLive() { live.clear(); }
 
-// Расписание по графику (кэш на день)
+// График остановки на день — ОДНИМ запросом сразу для всех номеров (как на сайте tgt72.ru)
+const stopDays = new Map(); // key → {at, promise}
+
+function stopDay(stopId, day) {
+  const key = `${stopId}/${T.iso(day)}`;
+  const e = stopDays.get(key);
+  if (e && !(e.failed && Date.now() - e.at > 60000)) return e.promise;
+  const entry = { at: Date.now(), failed: false };
+  entry.promise = limited(() => getJson(`${TGT}/times/?checkpoint_id=${stopId}&date=${ymd(day)}`, 10000))
+    .then((j) => {
+      const byRoute = new Map();
+      for (const o of ((j && j.objects) || [])) {
+        if (!byRoute.has(o.route_id)) byRoute.set(o.route_id, []);
+        byRoute.get(o.route_id).push(o);
+      }
+      return byRoute;
+    })
+    .catch(() => { entry.failed = true; entry.at = Date.now(); return null; });
+  stopDays.set(key, entry);
+  return entry.promise;
+}
+
 const planned = new Map();
-const plannedFailed = new Map(); // неудачные запросы не повторяем минуту
+const routeFallbackFailed = new Map();
 
 async function plannedTimes(stopId, routeId, forward, day) {
   const key = `${stopId}/${routeId}/${forward}/${T.iso(day)}`;
   if (planned.has(key)) return planned.get(key);
-  if (Date.now() - (plannedFailed.get(key) || 0) < 60000) { netHealth.errors = true; return []; }
-  let list = [];
-  try {
-    const objs = ((await getJson(`${TGT}/times/?checkpoint_id=${stopId}&route_id=${routeId}&date=${ymd(day)}`, 8000)) || {}).objects || [];
-    const match = objs.filter((o) => (o.is_forward ?? true) === forward);
-    const base = T.dayStart(day);
-    list = (match.length ? match : objs).flatMap((o) => o.times || [])
-      .map((s) => { const [h, m] = s.split(':').map(Number); return base + (h * 60 + m) * 60e3; })
-      .sort((a, b) => a - b);
-    planned.set(key, list);
-  } catch { netHealth.errors = true; plannedFailed.set(key, Date.now()); }
+  const byRoute = await stopDay(stopId, day);
+  if (!byRoute) { netHealth.errors = true; return []; }
+  let objs = byRoute.get(routeId) || [];
+  if (!objs.length && Date.now() - (routeFallbackFailed.get(key) || 0) > 60000) {
+    // В общем графике остановки этого номера нет — запасной запрос именно по маршруту
+    try {
+      objs = ((await limited(() => getJson(`${TGT}/times/?checkpoint_id=${stopId}&route_id=${routeId}&date=${ymd(day)}`, 10000))) || {}).objects || [];
+    } catch { netHealth.errors = true; routeFallbackFailed.set(key, Date.now()); }
+  }
+  const match = objs.filter((o) => (o.is_forward ?? true) === forward);
+  const base = T.dayStart(day);
+  const list = (match.length ? match : objs).flatMap((o) => o.times || [])
+    .map((s) => { const [h, m] = s.split(':').map(Number); return base + (h * 60 + m) * 60e3; })
+    .sort((a, b) => a - b);
+  planned.set(key, list);
   return list;
 }
 

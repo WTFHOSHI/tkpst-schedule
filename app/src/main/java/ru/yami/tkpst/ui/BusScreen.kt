@@ -86,7 +86,7 @@ fun BusScreen(vm: BusViewModel, home: HomeAddress?, onBack: () -> Unit, onEditAd
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             vm.refresh(force = true)
             while (true) {
-                delay(LIVE_REFRESH_MS)
+                delay(if (vm.whenSpec.mode == WhenMode.NOW) LIVE_REFRESH_MS else 120_000L)
                 vm.refresh(force = true)
             }
         }
