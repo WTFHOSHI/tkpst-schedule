@@ -25,7 +25,13 @@ if (!home) home = { lat: 57.1592, lon: 65.5219 }; // запасная точка
 log('dist home→college: ' + Math.round(distM(home.lat, home.lon, COLLEGE.lat, COLLEGE.lon)) + ' m');
 
 let t0 = Date.now();
-const net = await getNetwork();
+for (const u of ['https://api.tgt72.ru/api/v5/routesforsearch/', 'https://api.tgt72.ru/api/v5/prediction/?checkpoint_id=395', 'https://tgt72.ru/schedule/']) {
+  const t = Date.now();
+  try { const r = await fetch(u, { signal: AbortSignal.timeout(20000) }); log(`probe ${u}: ${r.status} in ${Date.now() - t} ms`); }
+  catch (e) { log(`probe ${u}: FAIL ${e.name} ${e.message} after ${Date.now() - t} ms`); }
+}
+let net;
+try { net = await getNetwork(); } catch (e) { log('getNetwork failed: ' + e + ' after ' + (Date.now() - t0) + ' ms'); process.exit(1); }
 log(`network: ${Date.now() - t0} ms, patterns ${net.patterns.length}, stops ${net.stops.size}, requests ${requests}`);
 log(`near home: ${net.near(home, 1000).length}, near college: ${net.near(COLLEGE, 1000).length}`);
 
