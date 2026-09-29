@@ -5,7 +5,7 @@ import {
 } from './core.js';
 import {
   store, cachedDay, loadDay, weeksToSync, prefetch, clearScheduleCache,
-  getNetwork, liveAt, invalidateLive, departureSource, geoSearch, geoReverse,
+  getNetwork, liveAt, invalidateLive, departureSource, geoSearch, geoReverse, netHealth,
 } from './data.js';
 
 const $app = document.getElementById('app');
@@ -518,6 +518,7 @@ async function refreshBus(force = false, spinner = false) {
       bus.plansKey = key;
     }
     const now = T.now();
+    netHealth.errors = false;
     const w = { ...bus.when };
     const target = w.mode === 'now' ? now : whenTarget();
     if (w.mode === 'arrive' && target <= now + 5 * 60e3) {
@@ -536,6 +537,7 @@ async function refreshBus(force = false, spinner = false) {
       // «Ближайшие автобусы» имеют смысл только для «сейчас»
       const boards = w.mode === 'now' ? await stopBoards(net, from, ranked, now) : [];
       if (seq !== bus.seq) return;
+      if (!ranked.length && netHealth.errors) throw new Error('unreachable');
       bus.state = { kind: 'ready', journeys: ranked, boards, updatedAt: now, when: w, target,
         noStops: !bus.plans.length && !net.near(from, ACCESS_RADIUS).length };
     }
@@ -646,7 +648,9 @@ function renderBusList() {
   } else if (s.kind === 'searching') {
     html = '<div class="msg"><div class="spinner"></div><p>Ищу маршруты…</p></div>';
   } else if (s.kind === 'error') {
-    html = msg('Ошибка', 'Не удалось загрузить маршруты. Проверь интернет.', '<button class="btn" data-retry>Повторить</button>');
+    html = msg('Сервер Тюменьгортранса не отвечает',
+      'Если включён VPN — выключи его или добавь сайт в исключения: сервер Тюменьгортранса отвечает только на подключения из России. Иначе проверь интернет.',
+      '<button class="btn" data-retry>Повторить</button>');
   } else {
     const parts = [];
     if (s.past) {

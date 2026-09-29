@@ -9,9 +9,9 @@ class ApiException(message: String) : Exception(message)
 object Http {
     const val USER_AGENT = "TkpstSchedule/1.0 (Android; github.com/WTFHOSHI/tkpst-schedule)"
 
-    fun get(url: String, timeoutMs: Int = 15_000): String {
+    fun get(url: String, timeoutMs: Int = 15_000, connectMs: Int = 10_000): String {
         val conn = URL(url).openConnection() as HttpURLConnection
-        conn.connectTimeout = 10_000
+        conn.connectTimeout = connectMs
         conn.readTimeout = timeoutMs
         conn.setRequestProperty("Accept", "application/json")
         conn.setRequestProperty("User-Agent", USER_AGENT)

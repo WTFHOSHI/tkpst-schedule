@@ -61,6 +61,10 @@ sealed interface BusState {
     data class Error(val message: String) : BusState
 }
 
+/** Сервер Тюменьгортранса не отвечает на зарубежные подключения. */
+const val VPN_HINT = "Если на телефоне включён VPN — выключи его или добавь «ТКПСТ Расписание» в исключения VPN: " +
+    "сервер Тюменьгортранса отвечает только на подключения из России."
+
 class BusViewModel(app: Application) : AndroidViewModel(app) {
 
     private val a = app as App
@@ -191,7 +195,7 @@ class BusViewModel(app: Application) : AndroidViewModel(app) {
                 throw e
             } catch (e: Exception) {
                 state = BusState.Error(
-                    if (!netLoaded) "Не удалось загрузить маршруты. Проверь интернет."
+                    if (!netLoaded) "Не удалось загрузить маршруты. Проверь интернет.\n\n$VPN_HINT"
                     else "Не удалось получить данные об автобусах."
                 )
             } finally {
@@ -200,7 +204,7 @@ class BusViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun compute(net: Network, from: LatLng): BusState.Ready = coroutineScope {
+    private suspend fun compute(net: Network, from: LatLng): BusState = coroutineScope {
         val now = LocalDateTime.now(TYUMEN)
         val spec = normalized(whenSpec)
         val target = if (spec.mode == WhenMode.NOW) null else target(spec)
@@ -213,6 +217,7 @@ class BusViewModel(app: Application) : AndroidViewModel(app) {
         if (spec.mode == WhenMode.ARRIVE && target!!.isBefore(now.plusMinutes(5))) {
             return@coroutineScope BusState.Ready(emptyList(), emptyList(), now, false, spec, target, past = true)
         }
+        transit.resetErrors()
         // Сначала параллельно берём онлайн-прогнозы для всех нужных остановок.
         val stopIds = plans.flatMap { p -> p.legs.map { it.from.id } }.distinct()
         stopIds.map { async { transit.live(it) } }.awaitAll()
@@ -230,6 +235,9 @@ class BusViewModel(app: Application) : AndroidViewModel(app) {
         val ranked = Router.rank(journeys, if (spec.mode == WhenMode.ARRIVE) Router.Sort.LATEST else sort, base, take = 5)
         // «Ближайшие автобусы» имеют смысл только для «сейчас»
         val b = if (spec.mode == WhenMode.NOW) boards(net, from, ranked, now) else emptyList()
+        if (ranked.isEmpty() && transit.hadNetworkErrors) {
+            return@coroutineScope BusState.Error("Сервер Тюменьгортранса не отвечает.\n\n$VPN_HINT")
+        }
         BusState.Ready(ranked, b, now, false, spec, target)
     }
 

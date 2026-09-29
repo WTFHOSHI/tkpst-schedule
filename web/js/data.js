@@ -182,6 +182,9 @@ async function downloadNetwork(onProgress) {
   return { date: today, stops, patterns };
 }
 
+// Были ли сетевые ошибки при последнем обновлении (сервер недоступен, например из-за VPN)
+export const netHealth = { errors: false };
+
 // Онлайн-прогнозы (кэш 20 с)
 const live = new Map();
 
@@ -198,13 +201,13 @@ export async function liveAt(stopId) {
   const now = T.now();
   let items = c ? c.items : [];
   try {
-    const j = await getJson(`${TGT}/prediction/?checkpoint_id=${stopId}`);
+    const j = await getJson(`${TGT}/prediction/?checkpoint_id=${stopId}`, 8000);
     items = ((j && j.objects) || []).flatMap((p) => (p.order || [])
       .filter((o) => o.prediction && o.prediction.time)
       .map((o) => ({ routeId: p.route_id, time: predToT(o.prediction.time, now), precise: o.prediction.precise !== false })))
       .filter((a) => a.time >= now - 60e3)
       .sort((a, b) => a.time - b.time);
-  } catch { /* оставляем старые */ }
+  } catch { netHealth.errors = true; /* оставляем старые */ }
   live.set(stopId, { at: Date.now(), items });
   return items;
 }
@@ -213,20 +216,22 @@ export function invalidateLive() { live.clear(); }
 
 // Расписание по графику (кэш на день)
 const planned = new Map();
+const plannedFailed = new Map(); // неудачные запросы не повторяем минуту
 
 async function plannedTimes(stopId, routeId, forward, day) {
   const key = `${stopId}/${routeId}/${forward}/${T.iso(day)}`;
   if (planned.has(key)) return planned.get(key);
+  if (Date.now() - (plannedFailed.get(key) || 0) < 60000) { netHealth.errors = true; return []; }
   let list = [];
   try {
-    const objs = ((await getJson(`${TGT}/times/?checkpoint_id=${stopId}&route_id=${routeId}&date=${ymd(day)}`)) || {}).objects || [];
+    const objs = ((await getJson(`${TGT}/times/?checkpoint_id=${stopId}&route_id=${routeId}&date=${ymd(day)}`, 8000)) || {}).objects || [];
     const match = objs.filter((o) => (o.is_forward ?? true) === forward);
     const base = T.dayStart(day);
     list = (match.length ? match : objs).flatMap((o) => o.times || [])
       .map((s) => { const [h, m] = s.split(':').map(Number); return base + (h * 60 + m) * 60e3; })
       .sort((a, b) => a - b);
     planned.set(key, list);
-  } catch { /* нет данных */ }
+  } catch { netHealth.errors = true; plannedFailed.set(key, Date.now()); }
   return list;
 }
 

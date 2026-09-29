@@ -30,6 +30,11 @@ class TransitRepository(context: Context) {
     }
 
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+
+    /** Были ли сетевые ошибки при последнем обновлении (сервер недоступен, например из-за VPN). */
+    @Volatile var hadNetworkErrors = false
+        private set
+    fun resetErrors() { hadNetworkErrors = false }
     private val file = File(context.filesDir, "network.json")
     private val netMutex = Mutex()
     @Volatile private var network: Network? = null
@@ -125,7 +130,7 @@ class TransitRepository(context: Context) {
         if (!force && c != null && System.currentTimeMillis() - c.at < PREDICTION_TTL_MS) return@withContext c.items
         val now = LocalDateTime.now(TYUMEN)
         val items = runCatching {
-            json.decodeFromString<TgtList<TgtPrediction>>(Http.get("$BASE/prediction/?checkpoint_id=$stopId")).objects
+            json.decodeFromString<TgtList<TgtPrediction>>(Http.get("$BASE/prediction/?checkpoint_id=$stopId", timeoutMs = 8_000, connectMs = 6_000)).objects
                 .flatMap { p ->
                     p.order.mapNotNull { o ->
                         val t = o.prediction.time ?: return@mapNotNull null
@@ -134,7 +139,7 @@ class TransitRepository(context: Context) {
                 }
                 .filter { !it.time.isBefore(now.minusMinutes(1)) }
                 .sortedBy { it.time }
-        }.getOrElse { c?.items ?: emptyList() }
+        }.getOrElse { hadNetworkErrors = true; c?.items ?: emptyList() }
         predictions[stopId] = Cached(System.currentTimeMillis(), items)
         items
     }
@@ -145,21 +150,28 @@ class TransitRepository(context: Context) {
     // ---------------- Расписание по графику ----------------
 
     private val planned = ConcurrentHashMap<String, List<LocalDateTime>>()
+    /** Неудачные запросы не повторяем минуту — иначе «Приехать к» ждёт таймауты по кругу. */
+    private val plannedFailedAt = ConcurrentHashMap<String, Long>()
 
     /** Время по графику для маршрута на остановке (кэш на день). */
     suspend fun planned(stopId: Int, routeId: Int, forward: Boolean, date: LocalDate): List<LocalDateTime> =
         withContext(Dispatchers.IO) {
             val key = "$stopId/$routeId/$forward/$date"
             planned[key]?.let { return@withContext it }
+            plannedFailedAt[key]?.let { if (System.currentTimeMillis() - it < 60_000) { hadNetworkErrors = true; return@withContext emptyList() } }
             val list = runCatching {
                 val objs = json.decodeFromString<TgtList<TgtTimes>>(
-                    Http.get("$BASE/times/?checkpoint_id=$stopId&route_id=$routeId&date=${date.format(YMD)}")
+                    Http.get("$BASE/times/?checkpoint_id=$stopId&route_id=$routeId&date=${date.format(YMD)}", timeoutMs = 8_000, connectMs = 6_000)
                 ).objects
                 val matching = objs.filter { it.isForward == forward }.ifEmpty { objs }
                 matching.flatMap { it.times }
                     .mapNotNull { runCatching { date.atTime(LocalTime.parse(it)) }.getOrNull() }
                     .sorted()
-            }.getOrNull() ?: return@withContext emptyList()
+            }.getOrElse {
+                hadNetworkErrors = true
+                plannedFailedAt[key] = System.currentTimeMillis()
+                null
+            } ?: return@withContext emptyList()
             planned[key] = list
             list
         }
