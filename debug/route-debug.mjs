@@ -10,11 +10,18 @@ globalThis.fetch = async (url, opts = {}) => {
   try { return await origFetch(url, opts); } finally { reqMs += Date.now() - t; }
 };
 const out = [];
-const log = (m) => { out.push(m); console.log(m); };
+const log = (m) => { out.push(m); console.log('::notice::' + String(m).slice(0, 900)); };
+process.on('unhandledRejection', (e) => { console.log('::error::' + (e && e.stack || e)); process.exit(1); });
 
-const places = await geoSearch('Краснооктябрьская 6');
-log('geo: ' + JSON.stringify(places.slice(0, 3)));
-const home = places[0].point;
+let home;
+try {
+  const places = await geoSearch('Краснооктябрьская 6');
+  log('geo: ' + JSON.stringify(places.slice(0, 3)));
+  home = places[0].point;
+} catch (e) {
+  log('geo failed: ' + e);
+}
+if (!home) home = { lat: 57.1592, lon: 65.5219 }; // запасная точка — примерно ул. Краснооктябрьская
 log('dist home→college: ' + Math.round(distM(home.lat, home.lon, COLLEGE.lat, COLLEGE.lon)) + ' m');
 
 let t0 = Date.now();
@@ -52,5 +59,4 @@ for (const hhmm of ['08:10', '09:50', '12:00']) {
     log('  debug plan0 from ' + T.hm(deadline - (p.staticMin + 20) * 60e3) + ': ' + (j0 ? `arrive ${T.hm(j0.arrive)} board ${T.hm(j0.legs[0].board)}` : 'null'));
   }
 }
-// Итог в аннотации (по 20 строк)
-for (let i = 0; i < out.length; i += 20) console.log('::notice title=debug ' + i + '::' + out.slice(i, i + 20).join('%0A'));
+
