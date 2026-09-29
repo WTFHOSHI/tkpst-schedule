@@ -140,3 +140,13 @@ test('приехать к: нельзя выехать в прошлом', async
   const j = await arriveBy(plans[0], now + 5 * 60e3, now, source);
   assert.equal(j, null); // за 5 минут не доехать
 });
+
+test('дистант 30.09: 2 и 3 пары, первая очная — 4-я', async () => {
+  const { isInPerson } = await import('../js/core.js');
+  const wed = [L(2, '09:55', '11:25'), L(3, '12:05', '13:35'), L(4, '13:45', '15:15'), L(5, '15:40', '17:10')];
+  const e = buildTimeline(3, wed, '2026-09-30');
+  assert.deepEqual(e.filter((x) => x.type === 'pair' && x.remote).map((x) => x.number), [2, 3]);
+  assert.equal(e.filter(isInPerson)[0].number, 4);
+  // в другие дни дистанта нет
+  assert.equal(buildTimeline(3, wed, '2026-10-07').filter((x) => x.remote).length, 0);
+});

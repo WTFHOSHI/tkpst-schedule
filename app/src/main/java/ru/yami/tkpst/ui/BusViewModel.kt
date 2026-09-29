@@ -17,6 +17,7 @@ import ru.yami.tkpst.App
 import ru.yami.tkpst.data.HomeAddress
 import ru.yami.tkpst.data.TYUMEN
 import ru.yami.tkpst.data.Timeline
+import ru.yami.tkpst.data.isInPerson
 import ru.yami.tkpst.data.transit.Geo
 import ru.yami.tkpst.data.transit.LatLng
 import ru.yami.tkpst.data.transit.Network
@@ -120,7 +121,8 @@ class BusViewModel(app: Application) : AndroidViewModel(app) {
         for (add in 0..1) {
             val day = now.toLocalDate().plusDays(add.toLong())
             if (day.dayOfWeek == java.time.DayOfWeek.SUNDAY) continue
-            val entries = Timeline.build(day, a.repository.cached(day)?.lessons.orEmpty())
+            // Только очные пары — на дистант ехать не нужно
+            val entries = Timeline.build(day, a.repository.cached(day)?.lessons.orEmpty()).filter { it.isInPerson() }
             if (entries.isEmpty()) continue
             val suffix = if (add == 1) " завтра" else ""
             if (direction == Direction.TO_COLLEGE) {
@@ -146,7 +148,7 @@ class BusViewModel(app: Application) : AndroidViewModel(app) {
         val today = LocalDate.now(TYUMEN)
         val now = LocalTime.now(TYUMEN)
         val lessons = a.repository.cached(today)?.lessons.orEmpty()
-        val entries = Timeline.build(today, lessons)
+        val entries = Timeline.build(today, lessons).filter { it.isInPerson() }
         val end = entries.lastOrNull()?.end ?: LocalTime.of(14, 0)
         return if (now < end) Direction.TO_COLLEGE else Direction.TO_HOME
     }

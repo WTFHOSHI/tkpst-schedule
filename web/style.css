@@ -209,3 +209,4 @@ svg { display: block; }
   border: 1px solid var(--outline); border-radius: 12px; padding: 6px 10px; min-width: 110px; text-align: center;
 }
 .pill.quick { background: var(--primary-c); color: var(--on-primary-c); border-color: transparent; font-weight: 600; }
+.tag.remote { font-size: 12px; padding: 3px 8px; align-self: flex-start; }

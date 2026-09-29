@@ -383,6 +383,16 @@ internal fun PairCard(e: Entry.Pair, phase: Phase, now: LocalTime) {
                     style = MaterialTheme.typography.titleSmall,
                     color = cs.onSurfaceVariant,
                 )
+                if (e.remote) {
+                    Surface(color = cs.tertiaryContainer, contentColor = cs.onTertiaryContainer, shape = RoundedCornerShape(8.dp)) {
+                        Text(
+                            "Дистант · в колледж идти не нужно",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        )
+                    }
+                }
                 e.lessons.forEachIndexed { i, l ->
                     if (i > 0) Spacer(Modifier.height(6.dp))
                     LessonBlock(l)

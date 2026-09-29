@@ -1,6 +1,6 @@
 // Интерфейс сайта: главный экран, расписание, автобусы, адрес, настройки.
 import {
-  T, fmt, formatLeft, buildTimeline, COLLEGE, COLLEGE_LABEL, ACCESS_RADIUS,
+  T, fmt, formatLeft, buildTimeline, isInPerson, COLLEGE, COLLEGE_LABEL, ACCESS_RADIUS,
   findPlans, schedulePlan, rankJourneys, arriveBy, distM, walkM, walkMin,
 } from './core.js';
 import {
@@ -268,6 +268,7 @@ function entryHtml(e, phase, nowMin) {
       <div class="num"><b>${e.number}</b><span>пара</span></div>
       <div class="body">
         <div class="time">${T.hmMin(e.start)} – ${T.hmMin(e.end)}</div>
+        ${e.remote ? '<span class="tag remote">Дистант · в колледж идти не нужно</span>' : ''}
         ${e.lessons.map(lessonHtml).join('')}
         ${timerLine(e, phase, nowMin)}
       </div>
@@ -303,7 +304,7 @@ function renderList(scroll) {
   else if (s.kind === 'loading') html = '<div class="msg"><div class="spinner"></div></div>';
   else if (s.kind === 'error') html = msg('Не удалось загрузить', 'Нет соединения с сервером расписания', '<button class="btn" data-retry>Повторить</button>');
   else {
-    const entries = buildTimeline(T.weekday(sched.selected), s.data.lessons);
+    const entries = buildTimeline(T.weekday(sched.selected), s.data.lessons, T.iso(sched.selected));
     if (!entries.length) {
       html = s.data.notPublished
         ? msg('Расписания ещё нет', 'Колледж пока не опубликовал пары на этот день.')
@@ -331,7 +332,7 @@ function renderList(scroll) {
   const retry = list.querySelector('[data-retry]');
   if (retry) retry.onclick = () => loadSelected(true);
   if (scroll && isToday && s.kind === 'loaded') {
-    const entries = buildTimeline(T.weekday(sched.selected), s.data.lessons);
+    const entries = buildTimeline(T.weekday(sched.selected), s.data.lessons, T.iso(sched.selected));
     const cur = entries.find((x) => nowMin < x.end);
     const el = cur && list.querySelector('#e' + cur.start);
     if (el && cur !== entries[0]) el.scrollIntoView({ block: 'start' });
@@ -356,7 +357,7 @@ const bus = {
 function autoDirection() {
   const now = T.now();
   const c = cachedDay(now);
-  const entries = buildTimeline(T.weekday(now), c ? c.lessons : []);
+  const entries = buildTimeline(T.weekday(now), c ? c.lessons : [], T.iso(now)).filter(isInPerson);
   const end = entries.length ? entries[entries.length - 1].end : 14 * 60;
   return T.minuteOfDay(now) < end ? 'toCollege' : 'toHome';
 }
@@ -375,7 +376,7 @@ function quickWhen() {
     const day = T.addDays(T.dayStart(now), add);
     if (T.weekday(day) === 7 || add > 1) continue; // только сегодня/завтра
     const c = cachedDay(day);
-    const entries = buildTimeline(T.weekday(day), c ? c.lessons : []);
+    const entries = buildTimeline(T.weekday(day), c ? c.lessons : [], T.iso(day)).filter(isInPerson);
     if (!entries.length) continue;
     if (bus.direction === 'toCollege') {
       const start = entries[0].start;

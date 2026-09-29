@@ -117,4 +117,13 @@ class TimelineTest {
         assertEquals("1 ч 20 мин", Timeline.formatLeft(80 * 60))
         assertEquals("2 ч", Timeline.formatLeft(120 * 60))
     }
+
+    @Test
+    fun remotePairsOn30September() {
+        val wed = listOf(lesson(2, "09:55", "11:25"), lesson(3, "12:05", "13:35"), lesson(4, "13:45", "15:15"))
+        val e = Timeline.build(LocalDate.of(2026, 9, 30), wed)
+        assertEquals(listOf(2, 3), e.filterIsInstance<Entry.Pair>().filter { it.remote }.map { it.number })
+        assertEquals(4, (e.first { it.isInPerson() } as Entry.Pair).number)
+        assertTrue(Timeline.build(LocalDate.of(2026, 10, 7), wed).filterIsInstance<Entry.Pair>().none { it.remote })
+    }
 }

@@ -89,7 +89,13 @@ function info(l) {
  * Лента дня: пары (время по звонкам с фото), классные часы понедельника, перерывы/окна.
  * Элементы: {type:'pair'|'ch'|'break', start, end, ...} (минуты от начала суток).
  */
-export function buildTimeline(wd, lessons) {
+/** Разовые изменения, которых нет в API колледжа: дистанционные пары (дата → номера). */
+export const REMOTE_PAIRS = { '2026-09-30': [2, 3] };
+
+/** Пара, на которую нужно прийти в колледж (не перерыв и не дистант). */
+export const isInPerson = (e) => e.type === 'ch' || (e.type === 'pair' && !e.remote);
+
+export function buildTimeline(wd, lessons, isoDate = null) {
   if (wd === 7 || !lessons || lessons.length === 0) return [];
   const slots = pairSlots(wd), chs = classHourSlots(wd);
   const classHours = new Map();
@@ -133,7 +139,8 @@ export function buildTimeline(wd, lessons) {
   for (const [n, lessonsInfo] of pairs) {
     const s = slots.find((x) => x.number === n);
     const [a, b] = s ? [s.start, s.end] : custom.get(n);
-    main.push({ type: 'pair', number: n, start: a, end: b, lessons: lessonsInfo });
+    const remote = !!(isoDate && (REMOTE_PAIRS[isoDate] || []).includes(n));
+    main.push({ type: 'pair', number: n, start: a, end: b, lessons: lessonsInfo, remote });
   }
   main.sort((a, b) => a.start - b.start);
 

@@ -29,6 +29,8 @@ sealed interface Entry {
         override val start: LocalTime,
         override val end: LocalTime,
         val lessons: List<LessonInfo>,
+        /** Пара дистанционно — в колледж идти не нужно. */
+        val remote: Boolean = false,
     ) : Entry
 
     data class ClassHour(
@@ -45,6 +47,23 @@ sealed interface Entry {
     ) : Entry {
         val minutes: Long get() = Duration.between(start, end).toMinutes()
     }
+}
+
+/** Разовые изменения, которых нет в API колледжа. */
+object Overrides {
+    /** Дистанционные пары: дата → номера пар. */
+    private val REMOTE: Map<LocalDate, Set<Int>> = mapOf(
+        LocalDate.of(2026, 9, 30) to setOf(2, 3),
+    )
+
+    fun remotePairs(date: LocalDate): Set<Int> = REMOTE[date].orEmpty()
+}
+
+/** Пара, на которую нужно прийти в колледж (не перерыв и не дистант). */
+fun Entry.isInPerson(): Boolean = when (this) {
+    is Entry.Pair -> !remote
+    is Entry.ClassHour -> true
+    is Entry.Break -> false
 }
 
 object Timeline {
@@ -144,7 +163,7 @@ object Timeline {
             for ((n, infos) in pairs) {
                 val slot = pairSlots.firstOrNull { it.number == n }
                 val (s, e) = slot?.let { it.start to it.end } ?: customTimes.getValue(n)
-                add(Entry.Pair(n, s, e, infos))
+                add(Entry.Pair(n, s, e, infos, remote = n in Overrides.remotePairs(date)))
             }
         }.sortedBy { it.start }
 
