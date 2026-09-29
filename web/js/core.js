@@ -328,7 +328,7 @@ export async function schedulePlan(plan, now, source) {
     const dep = await source.next(l.from.id, l.routeId, l.forward, t);
     if (!dep) return null;
     const alight = dep.time + l.rideMin * 60e3;
-    legs.push({ leg: l, board: dep.time, live: dep.live, alight });
+    legs.push({ leg: l, board: dep.time, live: dep.live, saved: !!dep.saved, alight });
     t = alight;
   }
   const arrive = t + plan.walkEnd.minutes * 60e3;

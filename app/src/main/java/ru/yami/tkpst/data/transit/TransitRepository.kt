@@ -35,10 +35,10 @@ class TransitRepository(context: Context) {
 
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
-    /** Были ли сетевые ошибки при последнем обновлении (сервер недоступен, например из-за VPN). */
+    /** Были ли сетевые ошибки при последнем обновлении (сервер Тюменьгортранса не ответил). */
     @Volatile var hadNetworkErrors = false
         private set
-    fun resetErrors() { hadNetworkErrors = false }
+    fun resetErrors() { hadNetworkErrors = false; usedSavedTimetable = false }
     private val file = File(context.filesDir, "network.json")
     private val netMutex = Mutex()
     @Volatile private var network: Network? = null
@@ -180,28 +180,93 @@ class TransitRepository(context: Context) {
      * График остановки на день — ОДНИМ запросом сразу для всех номеров (как на сайте tgt72.ru).
      * null — не удалось загрузить; такие неудачи не повторяем минуту.
      */
-    private data class StopDay(val at: Long, val byRoute: Map<Int, List<TgtTimes>>?)
+    /** saved — данные из сохранённого архива (сервер не ответил), такие перепроверяем через минуту. */
+    private data class StopDay(val at: Long, val byRoute: Map<Int, List<TgtTimes>>?, val saved: Boolean = false)
     private val stopDays = ConcurrentHashMap<String, Deferred<StopDay>>()
+
+    // ---------------- Архив графика на телефоне ----------------
+    // Каждый удачный ответ сохраняется по типу дня (будни / суббота / воскресенье).
+    // Если сервер Тюменьгортранса не отвечает, маршруты строятся по этому архиву.
+
+    @kotlinx.serialization.Serializable
+    private data class SavedStopDay(val date: String, val items: List<TgtTimes>)
+
+    private val ttDir = File(context.filesDir, "timetables").apply { mkdirs() }
+
+    private fun dayType(date: LocalDate) = when (date.dayOfWeek) {
+        java.time.DayOfWeek.SATURDAY -> "sat"
+        java.time.DayOfWeek.SUNDAY -> "sun"
+        else -> "wd"
+    }
+
+    private fun savedFile(stopId: Int, date: LocalDate) = File(ttDir, "${stopId}_${dayType(date)}.json")
+
+    private fun saveStopDay(stopId: Int, date: LocalDate, items: List<TgtTimes>) {
+        runCatching {
+            savedFile(stopId, date).writeText(json.encodeToString(SavedStopDay.serializer(), SavedStopDay(date.toString(), items)))
+        }
+    }
+
+    private fun loadSavedStopDay(stopId: Int, date: LocalDate): List<TgtTimes>? {
+        val own = savedFile(stopId, date)
+        // Нет графика этого типа дня — берём любой сохранённый (лучше, чем ничего)
+        val file = if (own.exists()) own else listOf("wd", "sat", "sun").map { File(ttDir, "${stopId}_$it.json") }.firstOrNull { it.exists() }
+        return file?.let { f -> runCatching { json.decodeFromString(SavedStopDay.serializer(), f.readText()).items }.getOrNull() }
+    }
+
+    /** Был ли сохранённый сегодня график по этой остановке. */
+    private fun savedToday(stopId: Int, date: LocalDate): Boolean {
+        val f = savedFile(stopId, date)
+        return f.exists() && java.time.Instant.ofEpochMilli(f.lastModified()).atZone(TYUMEN).toLocalDate() == LocalDate.now(TYUMEN)
+    }
+
+    /** Время бралось из архива при последнем обновлении. */
+    @Volatile var usedSavedTimetable = false
+        private set
+
+    /**
+     * Докачать и сохранить график остановок (для работы без сервера).
+     * Не больше 2 запросов одновременно, уже сохранённые сегодня пропускаются.
+     */
+    suspend fun prefetchTimetables(stopIds: Collection<Int>, date: LocalDate) {
+        val todo = stopIds.distinct().filter { !savedToday(it, date) }
+        val sem = Semaphore(2)
+        coroutineScope {
+            todo.map { id -> async { sem.withPermit { stopDay(id, date) } } }.awaitAll()
+        }
+    }
 
     private suspend fun stopDay(stopId: Int, date: LocalDate): Map<Int, List<TgtTimes>>? {
         val key = "$stopId/$date"
         val existing = stopDays[key]
         if (existing != null && existing.isCompleted) {
             val v = existing.await()
-            if (v.byRoute == null && System.currentTimeMillis() - v.at > 60_000) stopDays.remove(key, existing)
+            if ((v.byRoute == null || v.saved) && System.currentTimeMillis() - v.at > 60_000) stopDays.remove(key, existing)
         }
         val d = stopDays.getOrPut(key) {
             scope.async {
-                val map = runCatching {
+                val fresh = runCatching {
                     json.decodeFromString<TgtList<TgtTimes>>(
                         limitedGet("$BASE/times/?checkpoint_id=$stopId&date=${date.format(YMD)}")
-                    ).objects.groupBy { it.routeId }
+                    ).objects
                 }.getOrNull()
-                StopDay(System.currentTimeMillis(), map)
+                if (fresh != null) {
+                    if (fresh.isNotEmpty()) saveStopDay(stopId, date, fresh)
+                    StopDay(System.currentTimeMillis(), fresh.groupBy { it.routeId })
+                } else {
+                    val saved = loadSavedStopDay(stopId, date)
+                    StopDay(System.currentTimeMillis(), saved?.groupBy { it.routeId }, saved = saved != null)
+                }
             }
         }
-        return d.await().byRoute
+        val v = d.await()
+        if (v.byRoute == null || v.saved) hadNetworkErrors = true
+        if (v.saved) { usedSavedTimetable = true; savedKeys.add("$stopId/$date") } else savedKeys.remove("$stopId/$date")
+        return v.byRoute
     }
+
+    private val savedKeys = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+    fun isSaved(stopId: Int, date: LocalDate) = "$stopId/$date" in savedKeys
 
     private val planned = ConcurrentHashMap<String, List<LocalDateTime>>()
     private val routeFallbackFailedAt = ConcurrentHashMap<String, Long>()
@@ -228,7 +293,7 @@ class TransitRepository(context: Context) {
         val list = matching.flatMap { it.times }
             .mapNotNull { runCatching { date.atTime(LocalTime.parse(it)) }.getOrNull() }
             .sorted()
-        planned[key] = list
+        if (!isSaved(stopId, date)) planned[key] = list
         return list
     }
 
@@ -244,8 +309,9 @@ class TransitRepository(context: Context) {
             val date = after.toLocalDate()
             fun pick(list: List<LocalDateTime>) =
                 list.firstOrNull { !it.isBefore(after) && (lastLive == null || it.isAfter(lastLive.plusMinutes(2))) }
-            return (pick(planned(stopId, routeId, forward, date)) ?: pick(planned(stopId, routeId, forward, date.plusDays(1))))
-                ?.let { Router.Departure(it, false) }
+            pick(planned(stopId, routeId, forward, date))?.let { return Router.Departure(it, false, isSaved(stopId, date)) }
+            val next = date.plusDays(1)
+            return pick(planned(stopId, routeId, forward, next))?.let { Router.Departure(it, false, isSaved(stopId, next)) }
         }
     }
 }

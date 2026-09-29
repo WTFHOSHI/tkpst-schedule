@@ -269,6 +269,11 @@ private fun BusContent(vm: BusViewModel, now: LocalDateTime, direction: Directio
                 item { SectionTitle("Ближайшие автобусы") }
                 items(s.boards, key = { "b" + it.stop.id }) { StopBoardCard(it, now) }
             }
+            if (s.usedSaved) {
+                item {
+                    InfoCard("Сервер Тюменьгортранса сейчас не отвечает — время показано по сохранённому на телефоне графику, без онлайн-прогноза.")
+                }
+            }
             item {
                 Text(
                     "Обновлено в ${s.updatedAt.format(HM)} · онлайн-данные Тюменьгортранса, обновление каждые 30 с. " +
@@ -439,7 +444,7 @@ private fun BusStep(tl: Router.TimedLeg, now: LocalDateTime) {
                     contentColor = if (tl.live) cs.onSecondaryContainer else cs.onSurfaceVariant,
                 ) {
                     Text(
-                        if (tl.live) "онлайн" else "по графику",
+                        if (tl.live) "онлайн" else if (tl.saved) "по сохр. графику" else "по графику",
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                     )

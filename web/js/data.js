@@ -182,7 +182,7 @@ async function downloadNetwork(onProgress) {
   return { date: today, stops, patterns };
 }
 
-// Были ли сетевые ошибки при последнем обновлении (сервер недоступен, например из-за VPN)
+// Были ли сетевые ошибки при последнем обновлении (сервер Тюменьгортранса не ответил)
 export const netHealth = { errors: false };
 
 // Запросы за прогнозами и графиком — не больше 6 одновременно (иначе сервер тормозит и отбивает)
@@ -230,26 +230,71 @@ export async function liveAt(stopId) {
 
 export function invalidateLive() { live.clear(); }
 
-// График остановки на день — ОДНИМ запросом сразу для всех номеров (как на сайте tgt72.ru)
-const stopDays = new Map(); // key → {at, promise}
+// ---------------- Архив графика ----------------
+// Каждый удачный ответ сохраняется по типу дня (будни / суббота / воскресенье).
+// Если сервер Тюменьгортранса не отвечает, маршруты строятся по этому архиву.
+const dayType = (day) => { const w = T.weekday(day); return w === 6 ? 'sat' : w === 7 ? 'sun' : 'wd'; };
+function saveStopDay(stopId, day, items) {
+  store.set(`tt_${stopId}_${dayType(day)}`, { date: T.iso(day), saved: Date.now(),
+    items: items.map((o) => ({ route_id: o.route_id, is_forward: o.is_forward, times: o.times || [] })) });
+}
+function loadSavedStopDay(stopId, day) {
+  const own = store.get(`tt_${stopId}_${dayType(day)}`);
+  const any = own || ['wd', 'sat', 'sun'].map((t) => store.get(`tt_${stopId}_${t}`)).find(Boolean);
+  return any ? any.items : null;
+}
+function savedToday(stopId, day) {
+  const e = store.get(`tt_${stopId}_${dayType(day)}`);
+  return !!e && T.dayStart(T.fromReal(e.saved)) === T.dayStart(T.now());
+}
+export const usage = { saved: false };
+const savedKeys = new Set();
+export const isSaved = (stopId, day) => savedKeys.has(`${stopId}/${T.iso(day)}`);
 
-function stopDay(stopId, day) {
+// График остановки на день — ОДНИМ запросом сразу для всех номеров (как на сайте tgt72.ru)
+const stopDays = new Map(); // key → {at, failed, saved, promise}
+
+async function stopDay(stopId, day) {
   const key = `${stopId}/${T.iso(day)}`;
-  const e = stopDays.get(key);
-  if (e && !(e.failed && Date.now() - e.at > 60000)) return e.promise;
-  const entry = { at: Date.now(), failed: false };
-  entry.promise = limited(() => getJson(`${TGT}/times/?checkpoint_id=${stopId}&date=${ymd(day)}`, 10000))
-    .then((j) => {
-      const byRoute = new Map();
-      for (const o of ((j && j.objects) || [])) {
-        if (!byRoute.has(o.route_id)) byRoute.set(o.route_id, []);
-        byRoute.get(o.route_id).push(o);
-      }
-      return byRoute;
-    })
-    .catch(() => { entry.failed = true; entry.at = Date.now(); return null; });
-  stopDays.set(key, entry);
-  return entry.promise;
+  let e = stopDays.get(key);
+  if (!e || ((e.failed || e.saved) && Date.now() - e.at > 60000)) {
+    e = { at: Date.now(), failed: false, saved: false };
+    e.promise = limited(() => getJson(`${TGT}/times/?checkpoint_id=${stopId}&date=${ymd(day)}`, 10000))
+      .then((j) => {
+        const items = (j && j.objects) || [];
+        if (items.length) saveStopDay(stopId, day, items);
+        return items;
+      })
+      .catch(() => {
+        const saved = loadSavedStopDay(stopId, day);
+        e.at = Date.now();
+        if (saved) { e.saved = true; return saved; }
+        e.failed = true;
+        return null;
+      })
+      .then((items) => {
+        if (!items) return null;
+        const byRoute = new Map();
+        for (const o of items) {
+          if (!byRoute.has(o.route_id)) byRoute.set(o.route_id, []);
+          byRoute.get(o.route_id).push(o);
+        }
+        return byRoute;
+      });
+    stopDays.set(key, e);
+  }
+  const res = await e.promise;
+  if (e.failed || e.saved) netHealth.errors = true;
+  if (e.saved) { usage.saved = true; savedKeys.add(key); } else savedKeys.delete(key);
+  return res;
+}
+
+/** Докачать и сохранить график остановок (для работы без сервера). */
+export async function prefetchTimetables(stopIds, day) {
+  const todo = [...new Set(stopIds)].filter((id) => !savedToday(id, day));
+  for (let i = 0; i < todo.length; i += 2) {
+    await Promise.all(todo.slice(i, i + 2).map((id) => stopDay(id, day).catch(() => null)));
+  }
 }
 
 const planned = new Map();
@@ -272,7 +317,7 @@ async function plannedTimes(stopId, routeId, forward, day) {
   const list = (match.length ? match : objs).flatMap((o) => o.times || [])
     .map((s) => { const [h, m] = s.split(':').map(Number); return base + (h * 60 + m) * 60e3; })
     .sort((a, b) => a - b);
-  planned.set(key, list);
+  if (!isSaved(stopId, day)) planned.set(key, list);
   return list;
 }
 
@@ -284,9 +329,11 @@ export const departureSource = {
     if (l) return { time: l.time, live: true };
     const lastLive = lt.length ? lt[lt.length - 1].time : null;
     const pick = (list) => list.find((t) => t >= after && (lastLive == null || t > lastLive + 120e3));
-    const t = pick(await plannedTimes(stopId, routeId, forward, after))
-      ?? pick(await plannedTimes(stopId, routeId, forward, T.addDays(after, 1)));
-    return t != null ? { time: t, live: false } : null;
+    let t = pick(await plannedTimes(stopId, routeId, forward, after));
+    if (t != null) return { time: t, live: false, saved: isSaved(stopId, after) };
+    const next = T.addDays(after, 1);
+    t = pick(await plannedTimes(stopId, routeId, forward, next));
+    return t != null ? { time: t, live: false, saved: isSaved(stopId, next) } : null;
   },
 };
 

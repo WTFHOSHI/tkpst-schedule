@@ -57,13 +57,15 @@ sealed interface BusState {
         val target: LocalDateTime? = null,
         /** «Приехать к» уже прошло. */
         val past: Boolean = false,
+        /** Сервер не ответил — время взято из сохранённого графика. */
+        val usedSaved: Boolean = false,
     ) : BusState
     data class Error(val message: String) : BusState
 }
 
-/** Сервер Тюменьгортранса не отвечает на зарубежные подключения. */
-const val VPN_HINT = "Похоже, сервер Тюменьгортранса сейчас не работает — проверь, открывается ли расписание на tgt72.ru. " +
-    "Попробуй позже. Если включён VPN — выключи его: сервер отвечает только на подключения из России."
+/** Когда сервер Тюменьгортранса не отвечает и в архиве на телефоне ещё нет графика этих остановок. */
+const val SERVER_DOWN = "Сервер Тюменьгортранса сейчас не отвечает, а сохранённого графика для этих остановок на телефоне пока нет. " +
+    "Попробуй позже — после первого удачного поиска график сохранится и будет работать даже без сервера."
 
 class BusViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -195,7 +197,7 @@ class BusViewModel(app: Application) : AndroidViewModel(app) {
                 throw e
             } catch (e: Exception) {
                 state = BusState.Error(
-                    if (!netLoaded) "Не удалось загрузить маршруты. Проверь интернет.\n\n$VPN_HINT"
+                    if (!netLoaded) "Не удалось загрузить маршруты города. Проверь интернет и попробуй ещё раз."
                     else "Не удалось получить данные об автобусах."
                 )
             } finally {
@@ -236,9 +238,17 @@ class BusViewModel(app: Application) : AndroidViewModel(app) {
         // «Ближайшие автобусы» имеют смысл только для «сейчас»
         val b = if (spec.mode == WhenMode.NOW) boards(net, from, ranked, now) else emptyList()
         if (ranked.isEmpty() && transit.hadNetworkErrors) {
-            return@coroutineScope BusState.Error("Сервер Тюменьгортранса не отвечает.\n\n$VPN_HINT")
+            return@coroutineScope BusState.Error(SERVER_DOWN)
         }
-        BusState.Ready(ranked, b, now, false, spec, target)
+        // Докачиваем и сохраняем график всех нужных остановок — чтобы поиск работал и без сервера.
+        val stopsForArchive = plans.flatMap { p -> p.legs.map { it.from.id } }
+        viewModelScope.launch {
+            runCatching {
+                transit.prefetchTimetables(stopsForArchive, now.toLocalDate())
+                transit.prefetchTimetables(stopsForArchive, now.toLocalDate().plusDays(1))
+            }
+        }
+        BusState.Ready(ranked, b, now, false, spec, target, usedSaved = transit.usedSavedTimetable)
     }
 
     /** «Ближайшие автобусы» на 2–3 остановках рядом с точкой отправления. */

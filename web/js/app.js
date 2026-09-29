@@ -5,7 +5,7 @@ import {
 } from './core.js';
 import {
   store, cachedDay, loadDay, weeksToSync, prefetch, clearScheduleCache,
-  getNetwork, liveAt, invalidateLive, departureSource, geoSearch, geoReverse, netHealth,
+  getNetwork, liveAt, invalidateLive, departureSource, geoSearch, geoReverse, netHealth, usage, prefetchTimetables,
 } from './data.js';
 
 const $app = document.getElementById('app');
@@ -525,6 +525,7 @@ async function refreshBus(force = false, spinner = false) {
     }
     const now = T.now();
     netHealth.errors = false;
+    usage.saved = false;
     const w = { ...bus.when };
     const target = w.mode === 'now' ? now : whenTarget();
     if (w.mode === 'arrive' && target <= now + 5 * 60e3) {
@@ -544,7 +545,12 @@ async function refreshBus(force = false, spinner = false) {
       const boards = w.mode === 'now' ? await stopBoards(net, from, ranked, now) : [];
       if (seq !== bus.seq) return;
       if (!ranked.length && netHealth.errors) throw new Error('unreachable');
-      bus.state = { kind: 'ready', journeys: ranked, boards, updatedAt: now, when: w, target,
+      // Докачиваем и сохраняем график нужных остановок — чтобы поиск работал и без сервера
+      const archiveStops = bus.plans.flatMap((p) => p.legs.map((l) => l.from.id));
+      setTimeout(() => {
+        prefetchTimetables(archiveStops, now).then(() => prefetchTimetables(archiveStops, T.addDays(now, 1))).catch(() => {});
+      }, 3000);
+      bus.state = { kind: 'ready', journeys: ranked, boards, updatedAt: now, when: w, target, usedSaved: usage.saved,
         noStops: !bus.plans.length && !net.near(from, ACCESS_RADIUS).length };
     }
   } catch {
@@ -608,7 +614,7 @@ function journeyHtml(j, now, dir, st = {}) {
     }
     const ride = Math.max(1, Math.round((tl.alight - tl.board) / 60e3));
     s += `<div class="busstep">${badge(tl.leg.routeName)}<div>
-      <div><b class="accent">${tl.board - now > 3 * 3600e3 ? `в ${T.hm(tl.board)}${T.dayStart(tl.board) > T.dayStart(now) ? ' завтра' : ''}` : `${until(now, tl.board)} · ${T.hm(tl.board)}`}</b> <span class="tag ${tl.live ? 'live' : ''}">${tl.live ? 'онлайн' : 'по графику'}</span></div>
+      <div><b class="accent">${tl.board - now > 3 * 3600e3 ? `в ${T.hm(tl.board)}${T.dayStart(tl.board) > T.dayStart(now) ? ' завтра' : ''}` : `${until(now, tl.board)} · ${T.hm(tl.board)}`}</b> <span class="tag ${tl.live ? 'live' : ''}">${tl.live ? 'онлайн' : tl.saved ? 'по сохр. графику' : 'по графику'}</span></div>
       <div class="muted small">Проезд ~${ride} мин, ${tl.leg.stopsCount} ост. до «${esc(tl.leg.to.name)}»</div>
     </div></div>`;
     return s;
@@ -655,7 +661,7 @@ function renderBusList() {
     html = '<div class="msg"><div class="spinner"></div><p>Ищу маршруты…</p></div>';
   } else if (s.kind === 'error') {
     html = msg('Сервер Тюменьгортранса не отвечает',
-      'Похоже, сервер Тюменьгортранса сейчас не работает — проверь, открывается ли расписание на tgt72.ru. Попробуй позже. Если включён VPN — выключи его: сервер отвечает только на подключения из России.',
+      'А сохранённого графика для этих остановок пока нет. Попробуй позже — после первого удачного поиска график сохранится и будет работать даже без сервера.',
       '<button class="btn" data-retry>Повторить</button>');
   } else {
     const parts = [];
@@ -675,6 +681,7 @@ function renderBusList() {
       parts.push('<h3 class="section">Ближайшие автобусы</h3>');
       s.boards.forEach((b) => parts.push(boardHtml(b, now)));
     }
+    if (s.usedSaved) parts.push('<div class="note">Сервер Тюменьгортранса сейчас не отвечает — время показано по сохранённому графику, без онлайн-прогноза.</div>');
     parts.push(`<p class="muted tiny foot">Обновлено в ${T.hm(s.updatedAt)} · онлайн-данные Тюменьгортранса, обновление каждые 30 с. Время в пути — примерное.</p>`);
     html = parts.join('');
   }

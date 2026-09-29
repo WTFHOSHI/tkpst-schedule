@@ -220,7 +220,8 @@ object Router {
 
     // ---------------- Привязка ко времени ----------------
 
-    data class Departure(val time: LocalDateTime, val live: Boolean)
+    /** saved — время взято из сохранённого на телефоне графика (сервер не ответил). */
+    data class Departure(val time: LocalDateTime, val live: Boolean, val saved: Boolean = false)
 
     /** Источник времени прибытия автобусов на остановку. */
     interface DepartureSource {
@@ -228,7 +229,7 @@ object Router {
         suspend fun next(stopId: Int, routeId: Int, forward: Boolean, after: LocalDateTime): Departure?
     }
 
-    data class TimedLeg(val leg: RideLeg, val board: LocalDateTime, val live: Boolean, val alight: LocalDateTime)
+    data class TimedLeg(val leg: RideLeg, val board: LocalDateTime, val live: Boolean, val alight: LocalDateTime, val saved: Boolean = false)
 
     data class Journey(
         val plan: Plan,
@@ -259,7 +260,7 @@ object Router {
             if (idx > 0) t = plusMin(t, plan.transferWalk?.minutes ?: 0.0)
             val dep = source.next(leg.from.id, leg.routeId, leg.forward, t) ?: return null
             val alight = plusMin(dep.time, leg.rideMin)
-            timed += TimedLeg(leg, dep.time, dep.live, alight)
+            timed += TimedLeg(leg, dep.time, dep.live, alight, dep.saved)
             t = alight
         }
         val arrive = plusMin(t, plan.walkEnd.minutes)
