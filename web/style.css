@@ -210,3 +210,9 @@ svg { display: block; }
 }
 .pill.quick { background: var(--primary-c); color: var(--on-primary-c); border-color: transparent; font-weight: 600; }
 .tag.remote { font-size: 12px; padding: 3px 8px; align-self: flex-start; }
+.tag.cancel { background: #f3d6d2; color: #6b1a12; font-size: 12px; padding: 3px 8px; align-self: flex-start; }
+:root[data-theme="dark"] .tag.cancel { background: #5b1f18; color: #ffdad4; }
+@media (prefers-color-scheme: dark) { :root[data-theme="system"] .tag.cancel { background: #5b1f18; color: #ffdad4; } }
+.pair.cancelled .subject { text-decoration: line-through; opacity: .7; }
+.pair.cancelled { opacity: .75; }
+.announce { background: var(--primary-c); color: var(--on-primary-c); border-radius: 16px; padding: 12px 14px; font-size: 15px; display: flex; flex-direction: column; gap: 2px; }

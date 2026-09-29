@@ -33,8 +33,12 @@ final class ScheduleVM: ObservableObject {
         if prefetchTask == nil {
             prefetchTask = Task {
                 let t = Date()
+                let before = OverridesStore.shared.data
+                let admin = await OverridesStore.shared.refresh() ?? []
+                if OverridesStore.shared.data != before { rebuild() }
                 let days = ScheduleRepository.weeksToSync(t).filter { Tyumen.isoDay($0) != Tyumen.isoDay(selected) }
-                if let changes = await repo.prefetch(days, today: t) { ScheduleNotifier.notify(changes) }
+                let changes = await repo.prefetch(days, today: t) ?? []
+                ScheduleNotifier.notify(admin + changes)
                 prefetchTask = nil
             }
         }
@@ -56,6 +60,13 @@ final class ScheduleVM: ObservableObject {
 
     func goToday() { select(Self.today()) }
 
+    /// Перестроить ленту после изменений из админ-панели.
+    private func rebuild() {
+        if case let .loaded(_, data) = state, Tyumen.weekday(selected) != 7 {
+            state = .loaded(entries: OverridesStore.shared.build(selected, data.lessons), data: data)
+        }
+    }
+
     func refresh() { load(selected, userRefresh: true) }
 
     private func load(_ day: Date, userRefresh: Bool = false) {
@@ -67,7 +78,7 @@ final class ScheduleVM: ObservableObject {
         }
         // Сначала мгновенно показываем кэш, потом обновляем из сети.
         if let c = repo.cached(day) {
-            state = .loaded(entries: Timeline.build(weekday: wd, lessons: c.lessons), data: c)
+            state = .loaded(entries: OverridesStore.shared.build(day, c.lessons), data: c)
             refreshing = true
         } else {
             state = .loading
@@ -77,11 +88,11 @@ final class ScheduleVM: ObservableObject {
             do {
                 let d = try await repo.load(day)
                 if Task.isCancelled { return }
-                state = .loaded(entries: Timeline.build(weekday: wd, lessons: d.lessons), data: d)
+                state = .loaded(entries: OverridesStore.shared.build(day, d.lessons), data: d)
             } catch {
                 if Task.isCancelled { return }
                 if let c = repo.cached(day) {
-                    state = .loaded(entries: Timeline.build(weekday: wd, lessons: c.lessons), data: c)
+                    state = .loaded(entries: OverridesStore.shared.build(day, c.lessons), data: c)
                 } else {
                     state = .error("Нет соединения с сервером расписания")
                 }
@@ -95,6 +106,7 @@ private enum Phase { case past, now, future, otherDay }
 
 struct ScheduleView: View {
     @StateObject private var vm = ScheduleVM()
+    @ObservedObject private var overrides = OverridesStore.shared
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -176,10 +188,13 @@ struct ScheduleView: View {
                 CenterMessage(title: "Не удалось загрузить", text: msg, action: "Повторить") { vm.refresh() }
             case let .loaded(entries, data):
                 if entries.isEmpty {
-                    if data.notPublished {
-                        CenterMessage(title: "Расписания ещё нет", text: "Колледж пока не опубликовал пары на этот день.")
-                    } else {
-                        CenterMessage(title: "Пар нет", text: "На этот день занятий не найдено.")
+                    VStack(spacing: 8) {
+                        adminNotes.padding(.horizontal, 16)
+                        if data.notPublished {
+                            CenterMessage(title: "Расписания ещё нет", text: "Колледж пока не опубликовал пары на этот день.")
+                        } else {
+                            CenterMessage(title: "Пар нет", text: "На этот день занятий не найдено.")
+                        }
                     }
                 } else {
                     dayList(entries: entries, data: data, now: now, today: today)
@@ -200,6 +215,7 @@ struct ScheduleView: View {
                             .font(.caption)
                             .card(fill: Palette.tertiaryContainer, stroke: nil, radius: 12)
                     }
+                    adminNotes
                     if isToday { summary(entries, nowMin: nowMin) }
                     ForEach(entries) { e in
                         let phase: Phase = !isToday ? .otherDay
@@ -218,6 +234,18 @@ struct ScheduleView: View {
         }
     }
 
+    @ViewBuilder
+    private var adminNotes: some View {
+        if !overrides.announcement.isEmpty { AnnouncementCard(text: overrides.announcement) }
+        let note = overrides.note(vm.selected)
+        if !note.isEmpty {
+            Text(note).font(.subheadline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundStyle(Palette.onTertiaryContainer)
+                .card(fill: Palette.tertiaryContainer, stroke: nil, radius: 16)
+        }
+    }
+
     private func summary(_ entries: [TkpstCore.Entry], nowMin: Double) -> some View {
         let first = Double(entries.first!.start), last = entries.last!.end
         let text: String
@@ -231,8 +259,8 @@ struct ScheduleView: View {
     @ViewBuilder
     private func entryView(_ e: TkpstCore.Entry, phase: Phase, nowMin: Double) -> some View {
         switch e {
-        case let .pair(number, start, end, lessons):
-            PairCard(number: number, start: start, end: end, lessons: lessons, phase: phase, nowMin: nowMin)
+        case let .pair(number, start, end, lessons, status):
+            PairCard(number: number, start: start, end: end, lessons: lessons, status: status, phase: phase, nowMin: nowMin)
         case let .classHour(start, end, title, cabinet):
             ClassHourCard(start: start, end: end, title: title, cabinet: cabinet, phase: phase, nowMin: nowMin)
         case let .pause(start, end, kind):
@@ -298,6 +326,7 @@ private struct PairCard: View {
     let start: Int
     let end: Int
     let lessons: [LessonInfo]
+    let status: PairStatus
     let phase: Phase
     let nowMin: Double
 
@@ -311,10 +340,24 @@ private struct PairCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(Tyumen.hm(minutes: start)) – \(Tyumen.hm(minutes: end))")
                     .font(.subheadline.weight(.medium)).foregroundStyle(Palette.muted)
-                ForEach(Array(lessons.enumerated()), id: \.offset) { i, l in
-                    LessonBlock(l).padding(.top, i > 0 ? 6 : 0)
+                if status == .cancelled {
+                    Text("Пара отменена").font(.caption.weight(.semibold))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.red.opacity(0.15)))
+                        .foregroundStyle(Color.red)
                 }
-                TimerLine(start: start, end: end, phase: phase, nowMin: nowMin).padding(.top, 4)
+                if status == .remote {
+                    Text("Дистант · в колледж идти не нужно").font(.caption.weight(.semibold))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.tertiaryContainer))
+                        .foregroundStyle(Palette.onTertiaryContainer)
+                }
+                ForEach(Array(lessons.enumerated()), id: \.offset) { i, l in
+                    LessonBlock(l, struck: status == .cancelled).padding(.top, i > 0 ? 6 : 0)
+                }
+                if status != .cancelled {
+                    TimerLine(start: start, end: end, phase: phase, nowMin: nowMin).padding(.top, 4)
+                }
             }
         }
         .card(fill: phase == .now ? Palette.primaryContainer : Palette.card,
@@ -326,14 +369,18 @@ private struct PairCard: View {
 
 private struct LessonBlock: View {
     let l: LessonInfo
-    init(_ l: LessonInfo) { self.l = l }
+    let struck: Bool
+    init(_ l: LessonInfo, struck: Bool = false) { self.l = l; self.struck = struck }
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
+            if l.added { Badge(text: "Добавлена") }
             if l.replaced {
                 Badge(text: "Замена")
                 if let old = l.oldTitle { Text(old).font(.caption).foregroundStyle(Palette.muted).strikethrough() }
             }
             Text(l.title.isEmpty ? "Без названия" : l.title).font(.headline)
+                .strikethrough(struck)
+                .foregroundStyle(struck ? Palette.muted : Palette.onSurface)
             HStack(spacing: 6) {
                 if let oc = l.oldCabinet, !oc.isEmpty { Text("каб. \(oc)").strikethrough().foregroundStyle(Palette.muted) }
                 Text(l.cabinet.isEmpty ? "Кабинет не указан" : "Кабинет \(l.cabinet)")
@@ -398,5 +445,19 @@ private struct BreakCard: View {
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(active ? Palette.primary : Palette.outline, lineWidth: 1))
         .padding(.horizontal, 24)
         .opacity(phase == .past ? 0.5 : 1)
+    }
+}
+
+/// Объявление из админ-панели.
+struct AnnouncementCard: View {
+    let text: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Объявление").font(.subheadline.weight(.bold))
+            Text(text).font(.subheadline)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundStyle(Palette.onPrimaryContainer)
+        .card(fill: Palette.primaryContainer, stroke: nil, radius: 16)
     }
 }

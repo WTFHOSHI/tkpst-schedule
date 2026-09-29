@@ -1,0 +1,14 @@
+{
+  "announcement": "",
+  "updatedAt": "2026-09-29T14:10:00+05:00",
+  "days": {
+    "2026-09-30": {
+      "note": "",
+      "replaceAll": false,
+      "pairs": [
+        { "number": 2, "status": "remote" },
+        { "number": 3, "status": "remote" }
+      ]
+    }
+  }
+}

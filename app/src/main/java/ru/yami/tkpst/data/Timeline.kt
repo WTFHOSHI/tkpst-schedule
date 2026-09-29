@@ -16,6 +16,8 @@ data class LessonInfo(
     val oldTitle: String? = null,
     val oldCabinet: String? = null,
     val oldTeacher: String? = null,
+    /** Пара добавлена в админ-панели (в колледже её не было). */
+    val added: Boolean = false,
 )
 
 enum class BreakKind { SHORT, BIG, WINDOW }
@@ -31,6 +33,8 @@ sealed interface Entry {
         val lessons: List<LessonInfo>,
         /** Пара дистанционно — в колледж идти не нужно. */
         val remote: Boolean = false,
+        /** Пара отменена (админ-панель). */
+        val cancelled: Boolean = false,
     ) : Entry
 
     data class ClassHour(
@@ -49,19 +53,9 @@ sealed interface Entry {
     }
 }
 
-/** Разовые изменения, которых нет в API колледжа. */
-object Overrides {
-    /** Дистанционные пары: дата → номера пар. */
-    private val REMOTE: Map<LocalDate, Set<Int>> = mapOf(
-        LocalDate.of(2026, 9, 30) to setOf(2, 3),
-    )
-
-    fun remotePairs(date: LocalDate): Set<Int> = REMOTE[date].orEmpty()
-}
-
-/** Пара, на которую нужно прийти в колледж (не перерыв и не дистант). */
+/** Пара, на которую нужно прийти в колледж (не перерыв, не дистант и не отменена). */
 fun Entry.isInPerson(): Boolean = when (this) {
-    is Entry.Pair -> !remote
+    is Entry.Pair -> !remote && !cancelled
     is Entry.ClassHour -> true
     is Entry.Break -> false
 }
@@ -97,13 +91,26 @@ object Timeline {
         )
     }
 
+    private fun applyReplace(li: LessonInfo, t: String, c: String, te: String): LessonInfo {
+        val nt = t.ifEmpty { li.title }; val nc = c.ifEmpty { li.cabinet }; val nte = te.ifEmpty { li.teacher }
+        return LessonInfo(
+            title = nt, cabinet = nc, teacher = nte, replaced = true,
+            oldTitle = if (li.title != nt) li.title else li.oldTitle,
+            oldCabinet = if (li.cabinet != nc) li.cabinet else li.oldCabinet,
+            oldTeacher = if (li.teacher != nte) li.teacher else li.oldTeacher,
+        )
+    }
+
     /**
      * Строит ленту дня: пары (время — по звонкам с фото), классные часы понедельника
      * и перерывы/окна между ними.
      */
-    fun build(date: LocalDate, lessons: List<ApiLesson>): List<Entry> {
+    fun build(date: LocalDate, apiLessons: List<ApiLesson>, overrides: OverridesData = Overrides.current): List<Entry> {
         val dow = date.dayOfWeek
-        if (dow == DayOfWeek.SUNDAY || lessons.isEmpty()) return emptyList()
+        if (dow == DayOfWeek.SUNDAY) return emptyList()
+        val ov = overrides.day(date)
+        val lessons = if (ov?.replaceAll == true) emptyList() else apiLessons
+        if (lessons.isEmpty() && ov?.pairs.isNullOrEmpty()) return emptyList()
 
         val pairSlots = Bells.pairs(dow)
         val chSlots = Bells.classHours(dow)
@@ -145,6 +152,21 @@ object Timeline {
             pairs.getOrPut(number) { mutableListOf() }.add(toInfo(l))
         }
 
+        // Изменения из админ-панели поверх данных колледжа
+        val status = mutableMapOf<Int, String>()
+        for (p in ov?.pairs.orEmpty()) {
+            val n = p.number
+            if (pairSlots.none { it.number == n }) continue
+            val t = clean(p.title); val c = clean(p.cabinet); val te = clean(p.teacher)
+            if (t.isNotEmpty() || c.isNotEmpty() || te.isNotEmpty()) {
+                val cur = pairs[n]
+                if (cur != null) pairs[n] = cur.map { applyReplace(it, t, c, te) }.toMutableList()
+                else pairs[n] = mutableListOf(LessonInfo(t, c, te, added = ov?.replaceAll != true))
+            }
+            if (p.status == "remote" || p.status == "cancelled") status[n] = p.status
+        }
+        if (pairs.isEmpty() && classHours.isEmpty()) return emptyList()
+
         // Классные часы понедельника показываем, даже если API их не прислал:
         // утренний — если есть пары первой смены, дневной — если есть пары после 14:00.
         if (dow == DayOfWeek.MONDAY && pairs.isNotEmpty()) {
@@ -163,7 +185,7 @@ object Timeline {
             for ((n, infos) in pairs) {
                 val slot = pairSlots.firstOrNull { it.number == n }
                 val (s, e) = slot?.let { it.start to it.end } ?: customTimes.getValue(n)
-                add(Entry.Pair(n, s, e, infos, remote = n in Overrides.remotePairs(date)))
+                add(Entry.Pair(n, s, e, infos, remote = status[n] == "remote", cancelled = status[n] == "cancelled"))
             }
         }.sortedBy { it.start }
 

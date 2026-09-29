@@ -45,7 +45,7 @@ final class BusVM: ObservableObject {
         // До конца сегодняшних пар — «В колледж», после — «Домой».
         let now = Date()
         let lessons = ScheduleRepository.shared.cached(now)?.lessons ?? []
-        let entries = Timeline.build(weekday: Tyumen.weekday(now), lessons: lessons)
+        let entries = OverridesStore.shared.build(now, lessons).filter { $0.isInPerson }
         let end = Double(entries.last?.end ?? 14 * 60)
         direction = Tyumen.minuteOfDay(now) < end ? .toCollege : .toHome
     }

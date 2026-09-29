@@ -119,11 +119,31 @@ class TimelineTest {
     }
 
     @Test
-    fun remotePairsOn30September() {
-        val wed = listOf(lesson(2, "09:55", "11:25"), lesson(3, "12:05", "13:35"), lesson(4, "13:45", "15:15"))
-        val e = Timeline.build(LocalDate.of(2026, 9, 30), wed)
-        assertEquals(listOf(2, 3), e.filterIsInstance<Entry.Pair>().filter { it.remote }.map { it.number })
-        assertEquals(4, (e.first { it.isInPerson() } as Entry.Pair).number)
-        assertTrue(Timeline.build(LocalDate.of(2026, 10, 7), wed).filterIsInstance<Entry.Pair>().none { it.remote })
+    fun adminOverrides() {
+        val wed = listOf(lesson(2, "09:55", "11:25", "Практика"), lesson(3, "12:05", "13:35", "Бизнес"), lesson(4, "13:45", "15:15", "Интерфейсы"))
+        val ov = OverridesData(days = mapOf("2026-09-30" to OverrideDay(pairs = listOf(
+            OverridePair(2, status = "remote"),
+            OverridePair(3, status = "cancelled"),
+            OverridePair(4, title = "Графический дизайн", cabinet = "501"),
+            OverridePair(5, title = "Новая пара", cabinet = "204", teacher = "Т."),
+        ))))
+        val e = Timeline.build(LocalDate.of(2026, 9, 30), wed, ov)
+        val p = e.filterIsInstance<Entry.Pair>().associateBy { it.number }
+        assertTrue(p.getValue(2).remote)
+        assertTrue(p.getValue(3).cancelled)
+        assertEquals("Графический дизайн", p.getValue(4).lessons[0].title)
+        assertEquals("Интерфейсы", p.getValue(4).lessons[0].oldTitle)
+        assertEquals("501", p.getValue(4).lessons[0].cabinet)
+        assertTrue(p.getValue(5).lessons[0].added)
+        assertEquals(t("15:40"), p.getValue(5).start)
+        assertEquals(listOf(4, 5), e.filter { it.isInPerson() }.map { (it as Entry.Pair).number })
+        // в другой день изменений нет
+        assertTrue(Timeline.build(LocalDate.of(2026, 10, 7), wed, ov).filterIsInstance<Entry.Pair>().none { it.remote || it.cancelled })
+        // своё расписание, когда колледж ничего не прислал / вместо данных колледжа
+        val own = OverridesData(days = mapOf("2026-10-01" to OverrideDay(replaceAll = true, pairs = listOf(OverridePair(1, title = "Своя пара", cabinet = "1")))))
+        val o = Timeline.build(LocalDate.of(2026, 10, 1), emptyList(), own).filterIsInstance<Entry.Pair>().single()
+        assertEquals("Своя пара", o.lessons[0].title)
+        assertEquals(false, o.lessons[0].added)
+        assertEquals(1, Timeline.build(LocalDate.of(2026, 10, 1), listOf(lesson(3, "12:05", "13:35")), own).count { it is Entry.Pair })
     }
 }

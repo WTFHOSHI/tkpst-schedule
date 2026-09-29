@@ -85,25 +85,49 @@ function info(l) {
   };
 }
 
+// ---------------- Изменения от админа (overrides.json) ----------------
+// Формат:
+// { announcement, updatedAt, days: { "2026-09-30": { note, replaceAll, pairs: [
+//     { number: 2, status: "remote" | "cancelled" | "normal", title?, cabinet?, teacher? } ] } } }
+// status remote — дистант, cancelled — пара отменена; title/cabinet/teacher — замена (или новая пара);
+// replaceAll — своё расписание на день, данные колледжа не используются.
+
+let OVERRIDES = { announcement: '', days: {} };
+export function setOverrides(o) { OVERRIDES = o && typeof o === 'object' ? { announcement: '', days: {}, ...o } : { announcement: '', days: {} }; }
+export function getOverrides() { return OVERRIDES; }
+export function dayOverride(isoDate) { return (isoDate && OVERRIDES.days && OVERRIDES.days[isoDate]) || null; }
+
+/** Пара, на которую нужно прийти в колледж (не перерыв, не дистант и не отменена). */
+export const isInPerson = (e) => e.type === 'ch' || (e.type === 'pair' && !e.remote && !e.cancelled);
+
+function applyReplace(li, p) {
+  const nt = clean(p.title) || li.title, nc = clean(p.cabinet) || li.cabinet, nte = clean(p.teacher) || li.teacher;
+  return {
+    title: nt, cabinet: nc, teacher: nte, replaced: true,
+    oldTitle: li.title !== nt ? li.title : (li.oldTitle ?? null),
+    oldCabinet: li.cabinet !== nc ? li.cabinet : (li.oldCabinet ?? null),
+    oldTeacher: li.teacher !== nte ? li.teacher : (li.oldTeacher ?? null),
+  };
+}
+
 /**
  * Лента дня: пары (время по звонкам с фото), классные часы понедельника, перерывы/окна.
  * Элементы: {type:'pair'|'ch'|'break', start, end, ...} (минуты от начала суток).
+ * isoDate — дата «YYYY-MM-DD», чтобы применить изменения админа.
  */
-/** Разовые изменения, которых нет в API колледжа: дистанционные пары (дата → номера). */
-export const REMOTE_PAIRS = { '2026-09-30': [2, 3] };
-
-/** Пара, на которую нужно прийти в колледж (не перерыв и не дистант). */
-export const isInPerson = (e) => e.type === 'ch' || (e.type === 'pair' && !e.remote);
-
 export function buildTimeline(wd, lessons, isoDate = null) {
-  if (wd === 7 || !lessons || lessons.length === 0) return [];
+  const ov = dayOverride(isoDate);
+  if (wd === 7) return [];
+  const src = ov && ov.replaceAll ? [] : (lessons || []);
+  if (!src.length && !(ov && (ov.pairs || []).length)) return [];
   const slots = pairSlots(wd), chs = classHourSlots(wd);
   const classHours = new Map();
   const pairs = new Map();
   const custom = new Map();
-  const mondayShift = wd === 1 && lessons.some((l) => l.order === 1 && (isCH(l.title) || parseTime(l.startTime) === MORNING_CH.start));
+  const status = new Map();
+  const mondayShift = wd === 1 && src.some((l) => l.order === 1 && (isCH(l.title) || parseTime(l.startTime) === MORNING_CH.start));
 
-  for (const l of lessons) {
+  for (const l of src) {
     const st = parseTime(l.startTime);
     const chSlot = chs.find((s) => s.start === st);
     if (chSlot || isCH(l.title)) {
@@ -125,6 +149,21 @@ export function buildTimeline(wd, lessons, isoDate = null) {
     pairs.get(number).push(info(l));
   }
 
+  // Изменения админа поверх данных колледжа
+  if (ov) {
+    for (const p of ov.pairs || []) {
+      const n = Number(p.number);
+      if (!slots.some((s) => s.number === n)) continue;
+      const hasText = clean(p.title) || clean(p.cabinet) || clean(p.teacher);
+      if (hasText) {
+        if (pairs.has(n)) pairs.set(n, pairs.get(n).map((li) => applyReplace(li, p)));
+        else pairs.set(n, [{ title: clean(p.title), cabinet: clean(p.cabinet), teacher: clean(p.teacher), replaced: false, added: !ov.replaceAll }]);
+      }
+      if (p.status === 'remote' || p.status === 'cancelled') status.set(n, p.status);
+    }
+  }
+  if (!pairs.size && !classHours.size) return [];
+
   if (wd === 1 && pairs.size > 0) {
     const nums = [...pairs.keys()];
     if (!classHours.has(MORNING_CH.start) && nums.some((n) => n <= 3)) {
@@ -139,8 +178,8 @@ export function buildTimeline(wd, lessons, isoDate = null) {
   for (const [n, lessonsInfo] of pairs) {
     const s = slots.find((x) => x.number === n);
     const [a, b] = s ? [s.start, s.end] : custom.get(n);
-    const remote = !!(isoDate && (REMOTE_PAIRS[isoDate] || []).includes(n));
-    main.push({ type: 'pair', number: n, start: a, end: b, lessons: lessonsInfo, remote });
+    const st = status.get(n);
+    main.push({ type: 'pair', number: n, start: a, end: b, lessons: lessonsInfo, remote: st === 'remote', cancelled: st === 'cancelled' });
   }
   main.sort((a, b) => a.start - b.start);
 

@@ -9,7 +9,9 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import ru.yami.tkpst.App
+import ru.yami.tkpst.data.DayChange
 import ru.yami.tkpst.data.DayData
+import ru.yami.tkpst.data.Overrides
 import ru.yami.tkpst.data.Entry
 import ru.yami.tkpst.data.ScheduleNotifier
 import ru.yami.tkpst.data.ScheduleSyncWorker
@@ -55,8 +57,11 @@ class ScheduleViewModel(app: Application) : AndroidViewModel(app) {
         if (prefetchJob?.isActive != true) {
             prefetchJob = viewModelScope.launch {
                 val t = today()
-                val changes = repo.prefetch(ScheduleSyncWorker.weeksToSync(t).filter { it != selected }, t)
-                if (changes != null) ScheduleNotifier.notify(getApplication(), changes)
+                val before = Overrides.current
+                val admin = getApplication<App>().overrides.refresh(t).orEmpty()
+                if (Overrides.current != before) rebuild()
+                val changes = repo.prefetch(ScheduleSyncWorker.weeksToSync(t).filter { it != selected }, t).orEmpty()
+                ScheduleNotifier.notify(getApplication(), admin.associateWith { DayChange.CHANGED } + changes)
             }
         }
     }
@@ -80,6 +85,14 @@ class ScheduleViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun goToday() = select(today())
+
+    /** Перестроить ленту после изменений из админ-панели (без запроса к колледжу). */
+    private fun rebuild() {
+        val s = state
+        if (s is DayState.Loaded && selected.dayOfWeek != DayOfWeek.SUNDAY) {
+            state = s.copy(entries = Timeline.build(selected, s.data.lessons))
+        }
+    }
 
     fun refresh() = load(selected, userRefresh = true)
 

@@ -24,7 +24,7 @@ final class TimelineTests: XCTestCase {
 
         var numbers: [Int] = []
         var teacher2 = ""
-        for x in e { if case let .pair(n, _, _, ls) = x { numbers.append(n); if n == 2 { teacher2 = ls[0].teacher } } }
+        for x in e { if case let .pair(n, _, _, ls, _) = x { numbers.append(n); if n == 2 { teacher2 = ls[0].teacher } } }
         XCTAssertEqual(numbers, [1, 2, 3])
         XCTAssertEqual(teacher2, "Ильина Т.В.")
 
@@ -63,7 +63,7 @@ final class TimelineTests: XCTestCase {
 
     func testReplacement() {
         let l = lesson(1, "08:15", "09:45", "Старый", replace: ApiReplace(title: "Новый", cabinet: nil, teacher: "Петров"))
-        guard case let .pair(_, _, _, ls) = Timeline.build(weekday: 2, lessons: [l])[0] else { return XCTFail() }
+        guard case let .pair(_, _, _, ls, _) = Timeline.build(weekday: 2, lessons: [l])[0] else { return XCTFail() }
         XCTAssertTrue(ls[0].replaced)
         XCTAssertEqual(ls[0].title, "Новый")
         XCTAssertEqual(ls[0].oldTitle, "Старый")
@@ -91,5 +91,32 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(Tyumen.weekday(mon), 1)
         XCTAssertEqual(Tyumen.weekday(Tyumen.parseDay("2026-10-04")!), 7)
         XCTAssertEqual(Tyumen.isoDay(Tyumen.monday(of: Tyumen.parseDay("2026-10-04")!)), "2026-09-28")
+    }
+
+    func testAdminOverrides() {
+        let wed = [lesson(2, "09:55", "11:25"), lesson(3, "12:05", "13:35"), lesson(4, "13:45", "15:15")]
+        let ov = OverridesData(days: ["2026-09-30": OverrideDay(pairs: [
+            OverridePair(number: 2, status: "remote"),
+            OverridePair(number: 3, status: "cancelled"),
+            OverridePair(number: 4, title: "Графический дизайн", cabinet: "501"),
+            OverridePair(number: 5, title: "Новая пара"),
+        ])])
+        let e = Timeline.build(weekday: 3, lessons: wed, day: "2026-09-30", overrides: ov)
+        var st: [Int: PairStatus] = [:], ls: [Int: [LessonInfo]] = [:]
+        for x in e { if case let .pair(n, _, _, l, s) = x { st[n] = s; ls[n] = l } }
+        XCTAssertEqual(st[2], .remote)
+        XCTAssertEqual(st[3], .cancelled)
+        XCTAssertEqual(ls[4]?.first?.title, "Графический дизайн")
+        XCTAssertEqual(ls[4]?.first?.cabinet, "501")
+        XCTAssertEqual(ls[5]?.first?.added, true)
+        XCTAssertEqual(e.filter { $0.isInPerson }.count, 2)
+        XCTAssertTrue(Timeline.build(weekday: 3, lessons: wed, day: "2026-10-07", overrides: ov).allSatisfy { $0.isInPerson || { if case .pause = $0 { return true }; return false }($0) })
+        let own = OverridesData(days: ["2026-10-01": OverrideDay(replaceAll: true, pairs: [OverridePair(number: 1, title: "Своя")])])
+        XCTAssertEqual(Timeline.build(weekday: 4, lessons: [], day: "2026-10-01", overrides: own).count, 1)
+        XCTAssertEqual(Timeline.build(weekday: 4, lessons: wed, day: "2026-10-01", overrides: own).count, 1)
+        let json = #"{"announcement":"Привет","days":{"2026-09-30":{"note":"n","pairs":[{"number":2,"status":"remote"}]}}}"#
+        let d = try! JSONDecoder().decode(OverridesData.self, from: Data(json.utf8))
+        XCTAssertEqual(d.day("2026-09-30")?.pairs.first?.status, "remote")
+        XCTAssertEqual(d.changedDays(comparedTo: OverridesData()), ["2026-09-30"])
     }
 }

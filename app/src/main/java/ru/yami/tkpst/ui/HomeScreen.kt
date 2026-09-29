@@ -28,7 +28,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
+import ru.yami.tkpst.App
+import ru.yami.tkpst.data.DayChange
+import ru.yami.tkpst.data.Overrides
+import ru.yami.tkpst.data.ScheduleNotifier
+import ru.yami.tkpst.data.TYUMEN
+import java.time.LocalDate
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,6 +49,14 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun HomeScreen(onOpen: (String) -> Unit) {
     val now by rememberTyumenNow()
+    val context = LocalContext.current
+    // Подтягиваем изменения из админ-панели при каждом открытии главного экрана.
+    LaunchedEffect(Unit) {
+        val app = context.applicationContext as App
+        val changed = app.overrides.refresh(LocalDate.now(TYUMEN)).orEmpty()
+        ScheduleNotifier.notify(app, changed.associateWith { DayChange.CHANGED })
+    }
+    val announcement = Overrides.current.announcement?.trim().orEmpty()
     Scaffold(
         topBar = {
             TopAppBar(
@@ -69,6 +85,7 @@ fun HomeScreen(onOpen: (String) -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            if (announcement.isNotEmpty()) AnnouncementCard(announcement)
             BigButton(
                 title = "Расписание",
                 subtitle = "Пары группы ИС-25-3С",

@@ -1,10 +1,10 @@
 // Интерфейс сайта: главный экран, расписание, автобусы, адрес, настройки.
 import {
-  T, fmt, formatLeft, buildTimeline, isInPerson, COLLEGE, COLLEGE_LABEL, ACCESS_RADIUS,
+  T, fmt, formatLeft, buildTimeline, isInPerson, getOverrides, dayOverride, COLLEGE, COLLEGE_LABEL, ACCESS_RADIUS,
   findPlans, schedulePlan, rankJourneys, arriveBy, distM, walkM, walkMin,
 } from './core.js';
 import {
-  store, cachedDay, loadDay, weeksToSync, prefetch, clearScheduleCache,
+  store, cachedDay, loadDay, weeksToSync, prefetch, clearScheduleCache, initOverrides, refreshOverrides,
   getNetwork, liveAt, invalidateLive, departureSource, geoSearch, geoReverse, netHealth, usage, prefetchTimetables,
 } from './data.js';
 
@@ -87,6 +87,13 @@ function notifyChanges(changes) {
   if (chg.length) toast(`Изменения в расписании: ${chg.map(d).join(', ')}`);
 }
 
+// ---------------- Объявление от админа ----------------
+
+function announcementHtml() {
+  const a = (getOverrides().announcement || '').trim();
+  return a ? `<div class="announce"><b>Объявление</b><div>${esc(a)}</div></div>` : '';
+}
+
 // ---------------- Главный ----------------
 
 function home() {
@@ -95,6 +102,7 @@ function home() {
     ${topBar('ТКПСТ', `Тюмень · ${fmt.wdLong(now)}, ${fmt.dMonth(now)} · ${T.hm(now)}`, {
       back: false, actions: `<button class="icon" data-go="settings" aria-label="Настройки">${I.gear}</button>` })}
     <main class="home">
+      ${announcementHtml()}
       <a class="big primary" href="#/schedule">
         <span class="big-icon">${I.calendar}</span>
         <span><span class="big-t">Расписание</span><span class="big-s">Пары группы ИС-25-3С</span></span>
@@ -252,7 +260,7 @@ function timerLine(e, phase, nowMin) {
 
 function lessonHtml(l) {
   return `<div class="lesson">
-    ${l.replaced ? '<span class="tag">Замена</span>' : ''}
+    ${l.replaced ? '<span class="tag">Замена</span>' : ''}${l.added ? '<span class="tag">Добавлена</span>' : ''}
     ${l.replaced && l.oldTitle ? `<div class="old">${esc(l.oldTitle)}</div>` : ''}
     <div class="subject">${esc(l.title || 'Без названия')}</div>
     <div class="line">${l.oldCabinet ? `<s class="muted">каб. ${esc(l.oldCabinet)}</s> ` : ''}${l.cabinet ? 'Кабинет ' + esc(l.cabinet) : 'Кабинет не указан'}</div>
@@ -264,13 +272,14 @@ function lessonHtml(l) {
 function entryHtml(e, phase, nowMin) {
   const cls = `phase-${phase}`;
   if (e.type === 'pair') {
-    return `<article class="card pair ${cls}" id="e${e.start}">
+    return `<article class="card pair ${cls}${e.cancelled ? ' cancelled' : ''}" id="e${e.start}">
       <div class="num"><b>${e.number}</b><span>пара</span></div>
       <div class="body">
         <div class="time">${T.hmMin(e.start)} – ${T.hmMin(e.end)}</div>
         ${e.remote ? '<span class="tag remote">Дистант · в колледж идти не нужно</span>' : ''}
+        ${e.cancelled ? '<span class="tag cancel">Пара отменена</span>' : ''}
         ${e.lessons.map(lessonHtml).join('')}
-        ${timerLine(e, phase, nowMin)}
+        ${e.cancelled ? '' : timerLine(e, phase, nowMin)}
       </div>
     </article>`;
   }
@@ -315,6 +324,10 @@ function renderList(scroll) {
         const at = s.data.savedAt ? T.fromReal(s.data.savedAt) : null;
         parts.push(`<div class="note">Нет сети — показано сохранённое расписание${at ? ` (${fmt.dMon(at)}, ${T.hm(at)})` : ''}</div>`);
       }
+      const ann = announcementHtml();
+      if (ann) parts.unshift(ann);
+      const dn = (dayOverride(T.iso(sched.selected)) || {}).note;
+      if (dn && dn.trim()) parts.push(`<div class="note">${esc(dn.trim())}</div>`);
       if (isToday) {
         const first = entries[0].start, last = entries[entries.length - 1].end;
         const t = nowMin < first ? `До начала занятий ${formatLeft(secsTo(first, nowMin))}`
@@ -801,6 +814,19 @@ function settings() {
 }
 
 // ---------------- Запуск ----------------
+
+// Изменения от админа: сначала сохранённые, затем свежие с сервера
+initOverrides();
+function pullOverrides() {
+  refreshOverrides().then((changed) => {
+    if (!changed) return;
+    const path = location.hash.replace(/^#\/?/, '');
+    if (path === '' || path === 'schedule') render();
+  });
+}
+pullOverrides();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pullOverrides(); });
+setInterval(() => { if (!document.hidden) pullOverrides(); }, 5 * 60e3);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});

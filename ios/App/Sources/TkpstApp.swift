@@ -71,9 +71,12 @@ struct RootView: View {
 }
 
 struct HomeView: View {
+    @ObservedObject private var overrides = OverridesStore.shared
+
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { ctx in
             VStack(spacing: 16) {
+                if !overrides.announcement.isEmpty { AnnouncementCard(text: overrides.announcement) }
                 NavigationLink(value: Route.schedule) {
                     BigButton(title: "Расписание", subtitle: "Пары группы ИС-25-3С", icon: "calendar",
                               fill: Palette.primaryContainer, fg: Palette.onPrimaryContainer)
@@ -100,6 +103,10 @@ struct HomeView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+        }
+        .task {
+            // Подтягиваем изменения из админ-панели при открытии главного экрана.
+            if let changes = await OverridesStore.shared.refresh() { ScheduleNotifier.notify(changes) }
         }
     }
 }

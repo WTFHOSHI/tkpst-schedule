@@ -141,12 +141,32 @@ test('приехать к: нельзя выехать в прошлом', async
   assert.equal(j, null); // за 5 минут не доехать
 });
 
-test('дистант 30.09: 2 и 3 пары, первая очная — 4-я', async () => {
-  const { isInPerson } = await import('../js/core.js');
-  const wed = [L(2, '09:55', '11:25'), L(3, '12:05', '13:35'), L(4, '13:45', '15:15'), L(5, '15:40', '17:10')];
+test('изменения админа: дистант, отмена, замена, новая пара, своё расписание', async () => {
+  const { isInPerson, setOverrides } = await import('../js/core.js');
+  const wed = [L(2, '09:55', '11:25', 'Практика'), L(3, '12:05', '13:35', 'Бизнес'), L(4, '13:45', '15:15', 'Интерфейсы')];
+  setOverrides({ days: { '2026-09-30': { pairs: [
+    { number: 2, status: 'remote' },
+    { number: 3, status: 'cancelled' },
+    { number: 4, title: 'Графический дизайн', cabinet: '501' },
+    { number: 5, title: 'Новая пара', cabinet: '204', teacher: 'Т.' },
+  ] } } });
   const e = buildTimeline(3, wed, '2026-09-30');
-  assert.deepEqual(e.filter((x) => x.type === 'pair' && x.remote).map((x) => x.number), [2, 3]);
-  assert.equal(e.filter(isInPerson)[0].number, 4);
-  // в другие дни дистанта нет
-  assert.equal(buildTimeline(3, wed, '2026-10-07').filter((x) => x.remote).length, 0);
+  const p = (n) => e.find((x) => x.type === 'pair' && x.number === n);
+  assert.equal(p(2).remote, true);
+  assert.equal(p(3).cancelled, true);
+  assert.equal(p(4).lessons[0].title, 'Графический дизайн');
+  assert.equal(p(4).lessons[0].oldTitle, 'Интерфейсы');
+  assert.equal(p(4).lessons[0].replaced, true);
+  assert.equal(p(5).lessons[0].title, 'Новая пара');
+  assert.equal(p(5).start, 15 * 60 + 40);
+  assert.deepEqual(e.filter(isInPerson).map((x) => x.number), [4, 5]);
+  // в другой день изменений нет
+  assert.equal(buildTimeline(3, wed, '2026-10-07').filter((x) => x.remote || x.cancelled).length, 0);
+  // своё расписание, когда колледж ничего не прислал
+  setOverrides({ days: { '2026-10-01': { replaceAll: true, pairs: [{ number: 1, title: 'Своя пара', cabinet: '1' }] } } });
+  const own = buildTimeline(4, [], '2026-10-01');
+  assert.deepEqual(own.map((x) => [x.number, x.lessons[0].title]), [[1, 'Своя пара']]);
+  // replaceAll игнорирует данные колледжа
+  assert.equal(buildTimeline(4, [L(3, '12:05', '13:35')], '2026-10-01').filter((x) => x.type === 'pair').length, 1);
+  setOverrides(null);
 });

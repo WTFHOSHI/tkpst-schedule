@@ -1,0 +1,42 @@
+/* Админ-панель — поверх общих стилей сайта */
+.admin { padding: 12px 16px 120px; display: flex; flex-direction: column; gap: 12px; max-width: 720px; margin: 0 auto; }
+.admin h2 { margin: 6px 2px 0; font-size: 17px; color: var(--primary); }
+.admin label.lbl { font-size: 13px; color: var(--muted); display: block; margin: 0 0 4px 2px; }
+.admin textarea, .admin input[type=text], .admin input[type=password] {
+  width: 100%; font: inherit; font-size: 16px; color: var(--text); background: var(--bg);
+  border: 1px solid var(--outline); border-radius: 12px; padding: 10px 12px; outline: none;
+}
+.admin textarea { min-height: 64px; resize: vertical; }
+.admin textarea:focus, .admin input:focus { border-color: var(--primary); }
+.prow { display: flex; flex-direction: column; gap: 8px; }
+.prow + .prow { border-top: 1px solid var(--outline); padding-top: 12px; margin-top: 4px; }
+.prow-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.prow-head b { font-size: 16px; }
+.college { font-size: 13px; color: var(--muted); }
+.fields { display: grid; grid-template-columns: 1fr; gap: 6px; }
+@media (min-width: 560px) { .fields { grid-template-columns: 2fr 1fr 1.4fr; } }
+.seg.status { grid-template-columns: repeat(3, 1fr); }
+.seg.status button { font-size: 14px; padding: 7px 4px; }
+.seg.status button.on.remote { background: var(--tertiary-c); color: var(--on-tertiary-c); }
+.seg.status button.on.cancelled { background: #f3d6d2; color: #6b1a12; }
+.switch { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+.switch input { width: 20px; height: 20px; accent-color: var(--primary); }
+.savebar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  padding: 10px 16px calc(env(safe-area-inset-bottom) + 10px);
+  background: color-mix(in srgb, var(--bg) 92%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border-top: 1px solid var(--outline); display: flex; gap: 10px; align-items: center; justify-content: center;
+}
+.savebar .status-text { font-size: 13px; color: var(--muted); flex: 1; max-width: 420px; }
+.savebar .btn { white-space: nowrap; }
+.chip.has i { background: var(--tertiary) !important; }
+.changed-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.small-btn { font-size: 13px; color: var(--primary); padding: 4px 8px; border-radius: 8px; }
+.small-btn:active { background: var(--card-high); }
+.preview .pv { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--outline); font-size: 14px; }
+.preview .pv:last-child { border-bottom: 0; }
+.preview .pv .n { width: 72px; flex: none; color: var(--muted); }
+.warn { background: var(--tertiary-c); color: var(--on-tertiary-c); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
+.ok { background: var(--primary-c); color: var(--on-primary-c); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
+ol.steps { margin: 6px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.45; }
+ol.steps a { color: var(--primary); text-decoration: underline; }

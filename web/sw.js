@@ -16,6 +16,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return; // API — напрямую
+  if (url.pathname.endsWith('overrides.json')) return; // изменения админа — всегда из сети, не кэшируем
   // Сначала сеть (чтобы обновления приходили сразу), без сети — кэш.
   e.respondWith(
     fetch(e.request)

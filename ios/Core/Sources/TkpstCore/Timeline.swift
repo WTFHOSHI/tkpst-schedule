@@ -8,24 +8,38 @@ public struct LessonInfo: Equatable, Sendable {
     public var oldTitle: String? = nil
     public var oldCabinet: String? = nil
     public var oldTeacher: String? = nil
+    /// Пара добавлена в админ-панели (в колледже её не было).
+    public var added: Bool = false
 }
+
+/// Статус пары из админ-панели.
+public enum PairStatus: Equatable, Sendable { case normal, remote, cancelled }
 
 public enum BreakKind: Sendable { case short, big, window }
 
 public enum Entry: Equatable, Sendable, Identifiable {
-    case pair(number: Int, start: Int, end: Int, lessons: [LessonInfo])
+    case pair(number: Int, start: Int, end: Int, lessons: [LessonInfo], status: PairStatus)
     case classHour(start: Int, end: Int, title: String, cabinet: String)
     case pause(start: Int, end: Int, kind: BreakKind)
 
     public var start: Int {
         switch self {
-        case let .pair(_, s, _, _), let .classHour(s, _, _, _), let .pause(s, _, _): return s
+        case let .pair(_, s, _, _, _), let .classHour(s, _, _, _), let .pause(s, _, _): return s
         }
     }
 
     public var end: Int {
         switch self {
-        case let .pair(_, _, e, _), let .classHour(_, e, _, _), let .pause(_, e, _): return e
+        case let .pair(_, _, e, _, _), let .classHour(_, e, _, _), let .pause(_, e, _): return e
+        }
+    }
+
+    /// Нужно прийти в колледж (не перерыв, не дистант и не отменена).
+    public var isInPerson: Bool {
+        switch self {
+        case let .pair(_, _, _, _, status): return status == .normal
+        case .classHour: return true
+        case .pause: return false
         }
     }
 
@@ -72,8 +86,23 @@ public enum Timeline {
 
     /// Лента дня: пары (время — по звонкам с фото), классные часы понедельника и перерывы/окна.
     /// weekday: 1 = понедельник … 7 = воскресенье
-    public static func build(weekday: Int, lessons: [ApiLesson]) -> [Entry] {
-        if weekday == 7 || lessons.isEmpty { return [] }
+    static func applyReplace(_ li: LessonInfo, _ t: String, _ c: String, _ te: String) -> LessonInfo {
+        let nt = t.isEmpty ? li.title : t, nc = c.isEmpty ? li.cabinet : c, nte = te.isEmpty ? li.teacher : te
+        return LessonInfo(
+            title: nt, cabinet: nc, teacher: nte, replaced: true,
+            oldTitle: li.title != nt ? li.title : li.oldTitle,
+            oldCabinet: li.cabinet != nc ? li.cabinet : li.oldCabinet,
+            oldTeacher: li.teacher != nte ? li.teacher : li.oldTeacher
+        )
+    }
+
+    /// day — «YYYY-MM-DD», чтобы применить изменения из админ-панели.
+    public static func build(weekday: Int, lessons apiLessons: [ApiLesson], day: String? = nil,
+                             overrides: OverridesData? = nil) -> [Entry] {
+        if weekday == 7 { return [] }
+        let ov = overrides?.day(day)
+        let lessons = ov?.replaceAll == true ? [] : apiLessons
+        if lessons.isEmpty && (ov?.pairs.isEmpty ?? true) { return [] }
         let pairSlots = Bells.pairs(weekday: weekday)
         let chSlots = Bells.classHours(weekday: weekday)
 
@@ -109,6 +138,21 @@ public enum Timeline {
             pairs[number, default: []].append(info(l))
         }
 
+        // Изменения из админ-панели поверх данных колледжа
+        var status: [Int: PairStatus] = [:]
+        for p in ov?.pairs ?? [] {
+            let n = p.number
+            guard pairSlots.contains(where: { $0.number == n }) else { continue }
+            let t = clean(p.title), c = clean(p.cabinet), te = clean(p.teacher)
+            if !t.isEmpty || !c.isEmpty || !te.isEmpty {
+                if let cur = pairs[n] { pairs[n] = cur.map { applyReplace($0, t, c, te) } }
+                else { pairs[n] = [LessonInfo(title: t, cabinet: c, teacher: te, added: ov?.replaceAll != true)] }
+            }
+            if p.status == "remote" { status[n] = .remote }
+            if p.status == "cancelled" { status[n] = .cancelled }
+        }
+        if pairs.isEmpty && classHours.isEmpty { return [] }
+
         // Классные часы понедельника показываем, даже если API их не прислал.
         if weekday == 1 && !pairs.isEmpty {
             let m = Bells.morningClassHour, a = Bells.afternoonClassHour
@@ -123,9 +167,9 @@ public enum Timeline {
         var main: [Entry] = Array(classHours.values)
         for (n, infos) in pairs {
             if let s = pairSlots.first(where: { $0.number == n }) {
-                main.append(.pair(number: n, start: s.start, end: s.end, lessons: infos))
+                main.append(.pair(number: n, start: s.start, end: s.end, lessons: infos, status: status[n] ?? .normal))
             } else if let c = custom[n] {
-                main.append(.pair(number: n, start: c.0, end: c.1, lessons: infos))
+                main.append(.pair(number: n, start: c.0, end: c.1, lessons: infos, status: status[n] ?? .normal))
             }
         }
         main.sort { $0.start < $1.start }

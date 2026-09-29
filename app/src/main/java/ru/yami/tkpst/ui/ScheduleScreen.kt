@@ -54,6 +54,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import ru.yami.tkpst.data.BreakKind
 import ru.yami.tkpst.data.Entry
 import ru.yami.tkpst.data.LessonInfo
+import ru.yami.tkpst.data.Overrides
 import ru.yami.tkpst.data.TYUMEN
 import ru.yami.tkpst.data.Timeline
 import java.time.DayOfWeek
@@ -256,10 +257,13 @@ private fun DayContent(vm: ScheduleViewModel, today: LocalDate, now: LocalTime) 
         is DayState.Error -> Message("Не удалось загрузить", s.message, action = "Повторить", onAction = vm::refresh)
         is DayState.Loaded -> {
             if (s.entries.isEmpty()) {
-                if (s.data.notPublished) {
-                    Message("Расписания ещё нет", "Колледж пока не опубликовал пары на этот день.")
-                } else {
-                    Message("Пар нет", "На этот день занятий не найдено.")
+                Column(Modifier.fillMaxSize()) {
+                    AdminNotes(date, Modifier.padding(horizontal = 16.dp))
+                    if (s.data.notPublished) {
+                        Message("Расписания ещё нет", "Колледж пока не опубликовал пары на этот день.")
+                    } else {
+                        Message("Пар нет", "На этот день занятий не найдено.")
+                    }
                 }
                 return
             }
@@ -295,6 +299,7 @@ private fun DayContent(vm: ScheduleViewModel, today: LocalDate, now: LocalTime) 
                         }
                     }
                 }
+                item { AdminNotes(date) }
                 if (isToday) {
                     item { DaySummary(s.entries, now) }
                 }
@@ -383,6 +388,16 @@ internal fun PairCard(e: Entry.Pair, phase: Phase, now: LocalTime) {
                     style = MaterialTheme.typography.titleSmall,
                     color = cs.onSurfaceVariant,
                 )
+                if (e.cancelled) {
+                    Surface(color = cs.errorContainer, contentColor = cs.onErrorContainer, shape = RoundedCornerShape(8.dp)) {
+                        Text(
+                            "Пара отменена",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        )
+                    }
+                }
                 if (e.remote) {
                     Surface(color = cs.tertiaryContainer, contentColor = cs.onTertiaryContainer, shape = RoundedCornerShape(8.dp)) {
                         Text(
@@ -395,19 +410,26 @@ internal fun PairCard(e: Entry.Pair, phase: Phase, now: LocalTime) {
                 }
                 e.lessons.forEachIndexed { i, l ->
                     if (i > 0) Spacer(Modifier.height(6.dp))
-                    LessonBlock(l)
+                    LessonBlock(l, struck = e.cancelled)
                 }
-                if (phase != Phase.OTHER_DAY) Spacer(Modifier.height(4.dp))
-                TimerLine(e, phase, now, "Начнётся", "Закончится")
+                if (!e.cancelled) {
+                    if (phase != Phase.OTHER_DAY) Spacer(Modifier.height(4.dp))
+                    TimerLine(e, phase, now, "Начнётся", "Закончится")
+                }
             }
         }
     }
 }
 
 @Composable
-private fun LessonBlock(l: LessonInfo) {
+private fun LessonBlock(l: LessonInfo, struck: Boolean = false) {
     val cs = MaterialTheme.colorScheme
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (l.added) {
+            Surface(color = cs.tertiaryContainer, contentColor = cs.onTertiaryContainer, shape = RoundedCornerShape(6.dp)) {
+                Text("Добавлена", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+            }
+        }
         if (l.replaced) {
             Surface(color = cs.tertiaryContainer, contentColor = cs.onTertiaryContainer, shape = RoundedCornerShape(6.dp)) {
                 Text("Замена", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
@@ -416,7 +438,13 @@ private fun LessonBlock(l: LessonInfo) {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, textDecoration = TextDecoration.LineThrough)
             }
         }
-        Text(l.title.ifEmpty { "Без названия" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            l.title.ifEmpty { "Без названия" },
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            textDecoration = if (struck) TextDecoration.LineThrough else null,
+            color = if (struck) cs.onSurfaceVariant else Color.Unspecified,
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (l.oldCabinet != null && l.oldCabinet.isNotEmpty()) {
                 Text("каб. ${l.oldCabinet}", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant, textDecoration = TextDecoration.LineThrough)
@@ -513,5 +541,42 @@ private fun Message(title: String, text: String, action: String? = null, onActio
         Text(title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
         Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         if (action != null) Button(onClick = onAction) { Text(action) }
+    }
+}
+
+/** Объявление и заметка к дню из админ-панели. */
+@Composable
+internal fun AdminNotes(date: LocalDate, modifier: Modifier = Modifier) {
+    val ov = Overrides.current
+    val announcement = ov.announcement?.trim().orEmpty()
+    val note = ov.day(date)?.note?.trim().orEmpty()
+    if (announcement.isEmpty() && note.isEmpty()) return
+    Column(modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (announcement.isNotEmpty()) AnnouncementCard(announcement)
+        if (note.isNotEmpty()) {
+            Surface(
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(note, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(14.dp))
+            }
+        }
+    }
+}
+
+@Composable
+internal fun AnnouncementCard(text: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("Объявление", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(text, style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }

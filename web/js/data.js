@@ -1,5 +1,5 @@
 // Данные: расписание (OpenScheduleApi) и автобусы (Тюменьгортранс), кэш в localStorage.
-import { T, parseLessons, Network } from './core.js';
+import { T, parseLessons, Network, setOverrides } from './core.js';
 
 // ---------------- Хранилище ----------------
 
@@ -25,6 +25,22 @@ async function getJson(url, timeoutMs = 15000) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// ---------------- Изменения от админа (overrides.json) ----------------
+// Файл лежит рядом с сайтом и меняется из админ-панели — приложения подхватывают его без обновления.
+
+export function initOverrides() { setOverrides(store.get('overrides')); }
+
+/** Скачать свежие изменения. true — что-то поменялось. */
+export async function refreshOverrides() {
+  try {
+    const j = await getJson(`overrides.json?t=${Date.now()}`, 8000);
+    if (!j || typeof j !== 'object') return false;
+    const changed = JSON.stringify(j) !== JSON.stringify(store.get('overrides'));
+    if (changed) { store.set('overrides', j); setOverrides(j); }
+    return changed;
+  } catch { return false; }
 }
 
 // ---------------- Расписание пар ----------------

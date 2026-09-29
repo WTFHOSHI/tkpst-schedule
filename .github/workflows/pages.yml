@@ -1,0 +1,42 @@
+name: Site (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tests (логика сайта)
+        run: node --test web/test/*.test.mjs
+      - name: Check overrides.json
+        run: node -e "JSON.parse(require('fs').readFileSync('web/overrides.json','utf8'))"
+      - name: Prepare site
+        run: |
+          mkdir -p _site
+          cp -r web/index.html web/style.css web/sw.js web/manifest.webmanifest web/overrides.json web/js web/icons web/admin _site/
+          # новая версия кэша офлайн-оболочки на каждую сборку
+          sed -i "s/tkpst-shell-v1/tkpst-shell-${{ github.run_number }}/" _site/sw.js
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
