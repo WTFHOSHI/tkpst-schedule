@@ -46,9 +46,13 @@ public struct TgtPrediction: Decodable {
     public let order: [TgtPredictionItem]?
 }
 
-public struct TgtTimes: Decodable {
+public struct TgtTimes: Codable, Sendable {
+    public let route_id: Int?
     public let is_forward: Bool?
     public let times: [String]?
+    public init(route_id: Int?, is_forward: Bool?, times: [String]?) {
+        self.route_id = route_id; self.is_forward = is_forward; self.times = times
+    }
 }
 
 // ---------- Компактная сеть, сохраняется на телефоне раз в день ----------

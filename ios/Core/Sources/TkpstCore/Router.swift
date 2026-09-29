@@ -96,7 +96,9 @@ public struct Plan: Sendable {
 public struct Departure: Sendable {
     public let time: Date
     public let live: Bool
-    public init(time: Date, live: Bool) { self.time = time; self.live = live }
+    /// Время из сохранённого на телефоне графика (сервер не ответил).
+    public let saved: Bool
+    public init(time: Date, live: Bool, saved: Bool = false) { self.time = time; self.live = live; self.saved = saved }
 }
 
 /// Источник времени прибытия автобусов на остановку.
@@ -110,6 +112,7 @@ public struct TimedLeg: Sendable {
     public let board: Date
     public let live: Bool
     public let alight: Date
+    public var saved: Bool = false
 }
 
 public struct Journey: Sendable, Identifiable {
@@ -130,7 +133,8 @@ public struct Journey: Sendable, Identifiable {
     }
 }
 
-public enum RouteSort: Sendable { case duration, arrival }
+/// duration — меньше в пути, arrival — раньше приеду, latest — «приехать к»: выйти как можно позже.
+public enum RouteSort: Sendable { case duration, arrival, latest }
 
 public enum Router {
     public static let accessRadius = 1000.0
@@ -257,7 +261,7 @@ public enum Router {
                 return nil
             }
             let alight = dep.time.addingTimeInterval(l.rideMin * 60)
-            timed.append(TimedLeg(leg: l, board: dep.time, live: dep.live, alight: alight))
+            timed.append(TimedLeg(leg: l, board: dep.time, live: dep.live, alight: alight, saved: dep.saved))
             t = alight
         }
         let arrive = t.addingTimeInterval(plan.walkEnd.minutes * 60)
@@ -266,8 +270,40 @@ public enum Router {
         return Journey(plan: plan, leaveAt: max(leave, now), legs: timed, arrive: arrive)
     }
 
+    /// «Приехать к»: самый поздний выезд, при котором успеваешь к `deadline`.
+    /// `earliest` — раньше этого выйти нельзя (обычно «сейчас»).
+    public static func arriveBy(_ plan: Plan, deadline: Date, earliest: Date, source: DepartureSource) async -> Journey? {
+        var start = max(earliest, deadline.addingTimeInterval(-(plan.staticMin + 20) * 60))
+        var j = await schedule(plan, now: start, source: source)
+        // Не успеваем — выезжаем раньше.
+        var i = 0
+        while i < 8, let cur = j, cur.arrive > deadline {
+            let late = cur.arrive.timeIntervalSince(deadline)
+            let next = start.addingTimeInterval(-late - 120)
+            if next < earliest {
+                if start == earliest { return nil }
+                start = earliest
+            } else {
+                start = next
+            }
+            j = await schedule(plan, now: start, source: source)
+            i += 1
+        }
+        guard var best = j, best.arrive <= deadline else { return nil }
+        // Успеваем — пробуем следующий автобус, чтобы не выходить слишком рано.
+        for _ in 0..<12 {
+            let later = best.legs[0].board.addingTimeInterval((-plan.walkStart.minutes + 1) * 60)
+            guard let j2 = await schedule(plan, now: later, source: source),
+                  j2.arrive <= deadline, j2.legs[0].board > best.legs[0].board else { return best }
+            best = j2
+        }
+        return best
+    }
+
     static func ordered(_ list: [Journey], _ sort: RouteSort) -> [Journey] {
         switch sort {
+        case .latest:
+            return list.sorted { $0.leaveAt != $1.leaveAt ? $0.leaveAt > $1.leaveAt : $0.durationMin < $1.durationMin }
         case .duration:
             return list.sorted { ($0.durationMin, $0.arrive) < ($1.durationMin, $1.arrive) }
         case .arrival:
@@ -278,7 +314,7 @@ public enum Router {
     /// Лучшие варианты: сначала самые короткие в пути (или раньше всех приезжающие).
     public static func rank(_ journeys: [Journey], sort: RouteSort, now: Date, take: Int = 5) -> [Journey] {
         // Не предлагаем автобусы, до которых больше часа.
-        var soon = journeys.filter { $0.leaveAt.timeIntervalSince(now) <= 3600 }
+        var soon = sort == .latest ? journeys : journeys.filter { $0.leaveAt.timeIntervalSince(now) <= 3600 }
         if soon.isEmpty { soon = journeys }
         let sorted = ordered(soon, sort)
         // Склеиваем одинаковые пути с разными номерами.

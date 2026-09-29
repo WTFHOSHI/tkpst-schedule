@@ -63,4 +63,36 @@ final class RouterTests: XCTestCase {
     func testNoStopsNearby() {
         XCTAssertTrue(Router.findPlans(net, from: LatLng(lat: 56, lon: 60), to: college).isEmpty)
     }
+
+    func testArriveByLatestDeparture() async {
+        let day = Date(timeIntervalSince1970: 1_790_000_000)
+        let now = day.addingTimeInterval(-12 * 3600)
+        // Автобусы каждые 10 минут, начиная с `day`
+        struct Every10: DepartureSource {
+            let start: Date
+            func next(stopId: Int, routeId: Int, forward: Bool, after: Date) async -> Departure? {
+                var t = start.addingTimeInterval(routeId == 3 ? 300 : 0)
+                while t < after { t = t.addingTimeInterval(600) }
+                return Departure(time: t, live: false, saved: true)
+            }
+        }
+        let src = Every10(start: day)
+        let deadline = day.addingTimeInterval(2 * 3600)
+        var js: [Journey] = []
+        for p in Router.findPlans(net, from: home, to: college) {
+            if let j = await Router.arriveBy(p, deadline: deadline, earliest: now, source: src) { js.append(j) }
+        }
+        XCTAssertFalse(js.isEmpty)
+        for j in js {
+            XCTAssertLessThanOrEqual(j.arrive, deadline, "успеваем")
+            XCTAssertGreaterThan(j.arrive, deadline.addingTimeInterval(-11 * 60), "не выезжаем слишком рано")
+            XCTAssertTrue(j.legs.allSatisfy { $0.saved })
+        }
+        let r = Router.rank(js, sort: .latest, now: now)
+        XCTAssertEqual(r.map { $0.leaveAt }, r.map { $0.leaveAt }.sorted(by: >))
+        // Слишком близкий срок — не успеть
+        let plan = Router.findPlans(net, from: home, to: college)[0]
+        let tooSoon = await Router.arriveBy(plan, deadline: day.addingTimeInterval(300), earliest: day, source: src)
+        XCTAssertNil(tooSoon)
+    }
 }

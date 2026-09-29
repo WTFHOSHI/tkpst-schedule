@@ -21,13 +21,54 @@ struct StopBoard: Identifiable {
     var id: Int { stop.id }
 }
 
+/// Когда ехать — как в 2ГИС.
+enum WhenMode: String, CaseIterable, Identifiable {
+    case now, depart, arrive
+    var id: String { rawValue }
+    var title: String {
+        switch self { case .now: return "Сейчас"; case .depart: return "Выехать в"; case .arrive: return "Приехать к" }
+    }
+}
+
+/// day: 0 — сегодня, 1 — завтра; minutes — время суток по Тюмени.
+struct WhenSpec: Equatable {
+    var mode: WhenMode = .now
+    var day: Int = 0
+    var minutes: Int = 8 * 60
+
+    func target(now: Date = Date()) -> Date {
+        Tyumen.at(Tyumen.addDays(day, to: Tyumen.startOfDay(now)), minutes: minutes)
+    }
+}
+
+/// Подсказка «к 1-й паре» / «после пар».
+struct QuickWhen { let spec: WhenSpec; let label: String }
+
+struct BusReady {
+    let journeys: [Journey]
+    let boards: [StopBoard]
+    let updatedAt: Date
+    let noStopsNearby: Bool
+    var spec = WhenSpec()
+    /// Выбранный момент для «выехать в» / «приехать к».
+    var target: Date? = nil
+    /// «Приехать к» уже прошло.
+    var past = false
+    /// Сервер не ответил — время взято из сохранённого графика.
+    var usedSaved = false
+}
+
 enum BusState {
     case noHome
     case loadingNetwork(Int, Int)
     case searching
-    case ready(journeys: [Journey], boards: [StopBoard], updatedAt: Date, noStopsNearby: Bool)
+    case ready(BusReady)
     case error(String)
 }
+
+/// Когда сервер Тюменьгортранса не отвечает и в архиве на телефоне ещё нет графика этих остановок.
+let serverDownText = "Сервер Тюменьгортранса сейчас не отвечает, а сохранённого графика для этих остановок на телефоне пока нет. " +
+    "Попробуй позже — после первого удачного поиска график сохранится и будет работать даже без сервера."
 
 @MainActor
 final class BusVM: ObservableObject {
@@ -36,10 +77,12 @@ final class BusVM: ObservableObject {
     @Published var sort: RouteSort = .duration
     @Published private(set) var state: BusState = .searching
     @Published private(set) var refreshing = false
+    @Published private(set) var whenSpec = WhenSpec()
 
     private var task: Task<Void, Never>?
     private var plansKey: String?
     private var plans: [Plan] = []
+    private var lastRefresh = Date.distantPast
 
     init() {
         // До конца сегодняшних пар — «В колледж», после — «Домой».
@@ -48,6 +91,63 @@ final class BusVM: ObservableObject {
         let entries = OverridesStore.shared.build(now, lessons).filter { $0.isInPerson }
         let end = Double(entries.last?.end ?? 14 * 60)
         direction = Tyumen.minuteOfDay(now) < end ? .toCollege : .toHome
+    }
+
+    /// Если выбранное время сегодня уже прошло — значит, имеется в виду завтра.
+    private func normalized(_ spec: WhenSpec) -> WhenSpec {
+        var s = spec
+        if s.mode != .now && s.day == 0 && s.target() < Date() { s.day = 1 }
+        return s
+    }
+
+    func setWhen(_ spec: WhenSpec) {
+        let n = normalized(spec)
+        guard n != whenSpec else { return }
+        whenSpec = n
+        refresh(spinner: true)
+    }
+
+    func selectMode(_ mode: WhenMode) {
+        guard mode != whenSpec.mode else { return }
+        var spec = whenSpec
+        spec.mode = mode
+        if whenSpec.mode == .now && mode != .now {
+            // Разумное время по умолчанию: подсказка по расписанию или через час.
+            if let q = quickWhen(), q.spec.mode == mode {
+                spec = q.spec
+            } else {
+                let t = Date().addingTimeInterval(3600)
+                let m = Int(Tyumen.minuteOfDay(t))
+                spec.day = Tyumen.isoDay(t) != Tyumen.isoDay(Date()) ? 1 : 0
+                spec.minutes = m / 5 * 5
+            }
+        }
+        setWhen(spec)
+    }
+
+    /// К первой очной паре (в колледж) или после последней (домой) — сегодня или завтра.
+    func quickWhen() -> QuickWhen? {
+        let now = Date()
+        for add in 0...1 {
+            let day = Tyumen.addDays(add, to: Tyumen.startOfDay(now))
+            if Tyumen.weekday(day) == 7 { continue }
+            let lessons = ScheduleRepository.shared.cached(day)?.lessons ?? []
+            let entries = OverridesStore.shared.build(day, lessons).filter { $0.isInPerson }
+            guard let first = entries.first, let last = entries.last else { continue }
+            let suffix = add == 1 ? " завтра" : ""
+            if direction == .toCollege {
+                if Tyumen.at(day, minutes: first.start) < now.addingTimeInterval(20 * 60) { continue }
+                var title = "К классному часу"
+                if case let .pair(n, _, _, _, _) = first { title = "К \(n)-й паре" }
+                return QuickWhen(spec: WhenSpec(mode: .arrive, day: add, minutes: first.start - 5),
+                                 label: "\(title) · \(Tyumen.hm(minutes: first.start))\(suffix)")
+            } else {
+                if Tyumen.at(day, minutes: last.end) < now { continue }
+                return QuickWhen(spec: WhenSpec(mode: .depart, day: add, minutes: last.end + 5),
+                                 label: "После пар · \(Tyumen.hm(minutes: last.end))\(suffix)")
+            }
+        }
+        return nil
     }
 
     func select(_ d: Direction) {
@@ -62,15 +162,23 @@ final class BusVM: ObservableObject {
         refresh()
     }
 
+    /// Таймер: «сейчас» — каждые 30 с, на выбранное время — раз в 2 минуты.
+    func tick() {
+        let every: TimeInterval = whenSpec.mode == .now ? 29 : 119
+        if Date().timeIntervalSince(lastRefresh) >= every { refresh(force: true) }
+    }
+
     func refresh(force: Bool = false, spinner: Bool = false) {
         guard let home = AppSettings.shared.home else { state = .noHome; return }
         task?.cancel()
+        lastRefresh = Date()
         if spinner { state = .searching }
         if case .ready = state {} else { state = .searching }
         refreshing = true
-        let dir = direction, sortMode = sort
+        let dir = direction, sortMode = sort, spec = normalized(whenSpec)
         task = Task {
             if force { await transit.invalidateLive() }
+            var netLoaded = false
             do {
                 let net = try await transit.network { done, total in
                     Task { @MainActor [weak self] in
@@ -79,6 +187,7 @@ final class BusVM: ObservableObject {
                         self.state = .loadingNetwork(done, total)
                     }
                 }
+                netLoaded = true
                 if Task.isCancelled { return }
                 let (from, to) = dir == .toCollege ? (home.point, Geo.college) : (Geo.college, home.point)
                 let key = "\(net.data.date)|\(dir.rawValue)|\(home.point.lat),\(home.point.lon)"
@@ -87,38 +196,62 @@ final class BusVM: ObservableObject {
                     plans = await Task.detached { Router.findPlans(net, from: from, to: to) }.value
                     plansKey = key
                 }
-                let result = await Self.compute(net: net, from: from, plans: plans, sort: sortMode)
+                let result = await Self.compute(net: net, from: from, plans: plans, sort: sortMode, spec: spec)
                 if Task.isCancelled { return }
                 state = result
             } catch {
                 if Task.isCancelled { return }
-                state = .error("Не удалось загрузить маршруты. Проверь интернет.")
+                state = .error(netLoaded ? "Не удалось получить данные об автобусах."
+                               : "Не удалось загрузить маршруты города. Проверь интернет и попробуй ещё раз.")
             }
             refreshing = false
         }
     }
 
-    private nonisolated static func compute(net: Network, from: LatLng, plans: [Plan], sort: RouteSort) async -> BusState {
+    private nonisolated static func compute(net: Network, from: LatLng, plans: [Plan], sort: RouteSort, spec: WhenSpec) async -> BusState {
         let now = Date()
         let repo = TransitRepository.shared
+        let target: Date? = spec.mode == .now ? nil : spec.target(now: now)
         if plans.isEmpty {
-            let b = await boards(net: net, from: from, journeys: [], now: now)
-            return .ready(journeys: [], boards: b, updatedAt: now, noStopsNearby: net.near(from, radius: Router.accessRadius).isEmpty)
+            let b = spec.mode == .now ? await boards(net: net, from: from, journeys: [], now: now) : []
+            return .ready(BusReady(journeys: [], boards: b, updatedAt: now,
+                                   noStopsNearby: net.near(from, radius: Router.accessRadius).isEmpty, spec: spec, target: target))
         }
+        if spec.mode == .arrive, let t = target, t < now.addingTimeInterval(300) {
+            return .ready(BusReady(journeys: [], boards: [], updatedAt: now, noStopsNearby: false, spec: spec, target: target, past: true))
+        }
+        await repo.resetErrors()
         // Сначала параллельно берём онлайн-прогнозы для всех нужных остановок.
         let stopIds = Array(Set(plans.flatMap { $0.legs.map { $0.from.id } }))
         await withTaskGroup(of: Void.self) { g in
             for id in stopIds { g.addTask { _ = await repo.live(id) } }
         }
         let source = LiveDepartureSource()
+        let base = spec.mode == .depart && (target ?? now) > now ? target! : now
         var journeys: [Journey] = []
         await withTaskGroup(of: Journey?.self) { g in
-            for p in plans { g.addTask { await Router.schedule(p, now: now, source: source) } }
+            for p in plans {
+                g.addTask {
+                    if spec.mode == .arrive, let t = target {
+                        return await Router.arriveBy(p, deadline: t, earliest: now, source: source)
+                    }
+                    return await Router.schedule(p, now: base, source: source)
+                }
+            }
             for await j in g { if let j { journeys.append(j) } }
         }
-        let ranked = Router.rank(journeys, sort: sort, now: now, take: 5)
-        let b = await boards(net: net, from: from, journeys: ranked, now: now)
-        return .ready(journeys: ranked, boards: b, updatedAt: now, noStopsNearby: false)
+        let ranked = Router.rank(journeys, sort: spec.mode == .arrive ? .latest : sort, now: base, take: 5)
+        // «Ближайшие автобусы» имеют смысл только для «сейчас».
+        let b = spec.mode == .now ? await boards(net: net, from: from, journeys: ranked, now: now) : []
+        if ranked.isEmpty, await repo.hadNetworkErrors { return .error(serverDownText) }
+        let usedSaved = await repo.usedSavedTimetable
+        // Докачиваем и сохраняем график нужных остановок — чтобы поиск работал и без сервера.
+        Task.detached(priority: .background) {
+            await repo.prefetchTimetables(stopIds, day: now)
+            await repo.prefetchTimetables(stopIds, day: Tyumen.addDays(1, to: now))
+        }
+        return .ready(BusReady(journeys: ranked, boards: b, updatedAt: now, noStopsNearby: false,
+                               spec: spec, target: target, usedSaved: usedSaved))
     }
 
     /// «Ближайшие автобусы» на 2–3 остановках рядом с точкой отправления.
@@ -176,7 +309,7 @@ struct BusView: View {
     @EnvironmentObject var settings: AppSettings
     @StateObject private var vm = BusVM()
     @Environment(\.scenePhase) private var scenePhase
-    private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+    private let timer = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { ctx in
@@ -212,7 +345,7 @@ struct BusView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { vm.refresh(force: true) }
-        .onReceive(timer) { _ in if scenePhase == .active { vm.refresh(force: true) } }
+        .onReceive(timer) { _ in if scenePhase == .active { vm.tick() } }
         .onChange(of: settings.home) { _ in vm.refresh(force: true, spinner: true) }
         .onChange(of: scenePhase) { p in if p == .active { vm.refresh(force: true) } }
     }
@@ -225,12 +358,51 @@ struct BusView: View {
             .pickerStyle(.segmented)
             Text(vm.direction == .toCollege ? "\(home.label) → \(Geo.collegeLabel)" : "\(Geo.collegeLabel) → \(home.label)")
                 .font(.subheadline).foregroundStyle(Palette.muted).lineLimit(2)
-            HStack(spacing: 8) {
-                chip("Меньше в пути", selected: vm.sort == .duration) { vm.select(.duration) }
-                chip("Раньше приеду", selected: vm.sort == .arrival) { vm.select(.arrival) }
-            }
+            whenPicker
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
+    }
+
+    /// Когда ехать: сейчас / выехать в / приехать к (как в 2ГИС) + подсказка по расписанию.
+    @ViewBuilder
+    private var whenPicker: some View {
+        let spec = vm.whenSpec
+        HStack(spacing: 6) {
+            ForEach(WhenMode.allCases) { m in
+                chip(m.title, selected: spec.mode == m) { vm.selectMode(m) }
+            }
+        }
+        if spec.mode != .now {
+            HStack(spacing: 6) {
+                chip("Сегодня", selected: spec.day == 0) { var s = spec; s.day = 0; vm.setWhen(s) }
+                chip("Завтра", selected: spec.day == 1) { var s = spec; s.day = 1; vm.setWhen(s) }
+                Spacer()
+                DatePicker("Время", selection: Binding(
+                    get: { Tyumen.at(Date(), minutes: spec.minutes) },
+                    set: { d in var s = spec; s.minutes = Int(Tyumen.minuteOfDay(d)); vm.setWhen(s) }
+                ), displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+                    .environment(\.timeZone, Tyumen.timeZone)
+                    .environment(\.locale, Locale(identifier: "ru_RU"))
+            }
+        }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                if let q = vm.quickWhen() {
+                    Button { vm.setWhen(q.spec) } label: {
+                        Text(q.label).font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Capsule().fill(Palette.primaryContainer))
+                            .foregroundStyle(Palette.onPrimaryContainer)
+                    }
+                    .buttonStyle(.plain)
+                }
+                if spec.mode != .arrive {
+                    chip("Меньше в пути", selected: vm.sort == .duration) { vm.select(.duration) }
+                    chip("Раньше приеду", selected: vm.sort == .arrival) { vm.select(.arrival) }
+                }
+            }
+        }
     }
 
     private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
@@ -263,22 +435,35 @@ struct BusView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .error(let msg):
             CenterMessage(title: "Ошибка", text: msg, action: "Повторить") { vm.refresh(force: true, spinner: true) }
-        case let .ready(journeys, boards, updatedAt, noStops):
+        case let .ready(r):
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
-                    if journeys.isEmpty {
-                        Text(noStops ? "В радиусе километра нет остановок."
+                    if r.past {
+                        info("Это время уже прошло или слишком близко. Выбери время позже или «Завтра».")
+                    } else if r.journeys.isEmpty {
+                        info(r.noStopsNearby ? "В радиусе километра нет остановок."
+                             : r.spec.mode != .now ? "К этому времени подходящих рейсов не нашлось. Попробуй другое время."
                              : "Сейчас не нашлось автобусов по этому направлению (возможно, уже ночь). Посмотри ближайшие автобусы ниже.")
-                            .card(fill: Palette.cardHigh, stroke: nil, radius: 16)
                     } else {
-                        section("Лучшие маршруты")
-                        ForEach(journeys) { JourneyCard(j: $0, now: now, direction: vm.direction) }
+                        if r.spec.mode == .arrive, let t = r.target {
+                            section("Чтобы успеть к \(Tyumen.hm(t))\(dayWord(t, now))")
+                        } else if r.spec.mode == .depart, let t = r.target {
+                            section("Выезд в \(Tyumen.hm(t))\(dayWord(t, now))")
+                        } else {
+                            section("Лучшие маршруты")
+                        }
+                        ForEach(r.journeys) {
+                            JourneyCard(j: $0, now: now, direction: vm.direction, deadline: r.spec.mode == .arrive ? r.target : nil)
+                        }
                     }
-                    if !boards.isEmpty {
+                    if !r.boards.isEmpty {
                         section("Ближайшие автобусы")
-                        ForEach(boards) { StopBoardCard(b: $0, now: now) }
+                        ForEach(r.boards) { StopBoardCard(b: $0, now: now) }
                     }
-                    Text("Обновлено в \(Tyumen.hm(updatedAt)) · онлайн-данные Тюменьгортранса, обновление каждые 30 с. Время в пути — примерное.")
+                    if r.usedSaved {
+                        info("Сервер Тюменьгортранса сейчас не отвечает — время показано по сохранённому на телефоне графику, без онлайн-прогноза.")
+                    }
+                    Text("Обновлено в \(Tyumen.hm(r.updatedAt)) · онлайн-данные Тюменьгортранса, обновление каждые 30 с. Время в пути — примерное.")
                         .font(.caption).foregroundStyle(Palette.muted).padding(.top, 8)
                 }
                 .padding(.horizontal, 16).padding(.bottom, 24)
@@ -286,15 +471,24 @@ struct BusView: View {
         }
     }
 
+    private func info(_ t: String) -> some View {
+        Text(t).frame(maxWidth: .infinity, alignment: .leading).card(fill: Palette.cardHigh, stroke: nil, radius: 16)
+    }
+
     private func section(_ t: String) -> some View {
         Text(t).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.primary).padding(.top, 8)
     }
+}
+
+private func dayWord(_ t: Date, _ now: Date) -> String {
+    Tyumen.isoDay(t) > Tyumen.isoDay(now) ? " завтра" : ""
 }
 
 private struct JourneyCard: View {
     let j: Journey
     let now: Date
     let direction: Direction
+    var deadline: Date? = nil
 
     var body: some View {
         let target = direction == .toCollege ? "колледжа" : "дома"
@@ -310,6 +504,9 @@ private struct JourneyCard: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("прибытие").font(.caption).foregroundStyle(Palette.muted)
                     Text(Tyumen.hm(j.arrive)).font(.headline)
+                    if let d = deadline {
+                        Text("запас \(max(0, Int(d.timeIntervalSince(j.arrive) / 60))) мин").font(.caption).foregroundStyle(Palette.muted)
+                    }
                 }
             }
             HStack(spacing: 6) {
@@ -322,7 +519,9 @@ private struct JourneyCard: View {
                         .font(.caption).foregroundStyle(Palette.muted).lineLimit(2)
                 }
             }
-            Text(leaveSec <= 30 ? "Выходи сейчас" : "Выходи через \(Timeline.formatLeft(leaveSec)) (в \(Tyumen.hm(j.leaveAt)))")
+            Text(leaveSec <= 30 ? "Выходи сейчас"
+                 : leaveSec > 3 * 3600 ? "Выходи в \(Tyumen.hm(j.leaveAt))\(dayWord(j.leaveAt, now))"
+                 : "Выходи через \(Timeline.formatLeft(leaveSec)) (в \(Tyumen.hm(j.leaveAt)))")
                 .font(.subheadline.weight(.bold))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12).padding(.vertical, 8)
@@ -372,7 +571,7 @@ private struct BusStep: View {
                 HStack(spacing: 8) {
                     Text("\(untilText(now, tl.board)) · \(Tyumen.hm(tl.board))")
                         .font(.subheadline.weight(.semibold)).foregroundStyle(Palette.primary)
-                    Badge(text: tl.live ? "онлайн" : "по графику",
+                    Badge(text: tl.live ? "онлайн" : tl.saved ? "по сохр. графику" : "по графику",
                           fill: tl.live ? Palette.secondaryContainer : Palette.cardHigh,
                           fg: tl.live ? Palette.onSecondaryContainer : Palette.muted)
                 }
