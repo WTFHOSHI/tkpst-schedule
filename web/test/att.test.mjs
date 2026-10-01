@@ -17,6 +17,7 @@ test('пары дня и итоги', () => {
   const week = { m: { a: { '2026-09-29': { 2: 'N', 5: 'P' } } }, pairs: { '2026-09-29': [6] } };
   assert.deepEqual(A.dayPairs(week, '2026-09-29', [1, 2, 3]), [1, 2, 3, 5, 6]);
   assert.deepEqual(A.dayPairs(null, '2026-09-29', null), []);
+  assert.deepEqual(A.dayPairs({ m: {}, pairs: {}, hide: { '2026-09-29': [2] } }, '2026-09-29', [1, 2, 3]), [1, 3]);
   const t = A.studentTotals('a', { w: week });
   assert.equal(t.N, 1); assert.equal(t.P, 1); assert.equal(t.absent, 1); assert.equal(t.rate, 0.5);
   assert.equal(A.studentTotals('a', { w: week }, () => false).total, 0);

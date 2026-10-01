@@ -118,13 +118,14 @@ export function courseOp(config, body) {
 
 // ---------------- Отметки ----------------
 
-export const emptyWeek = () => ({ m: {}, pairs: {}, at: '', by: '' });
+export const emptyWeek = () => ({ m: {}, pairs: {}, hide: {}, at: '', by: '' });
 
 /**
  * Применить изменения к неделе. changes: [{s: studentId, d: 'YYYY-MM-DD', p: 1..8, v: код | null}].
- * pairs: {iso: [номера пар по расписанию]}. Возвращает {ok, error?}.
+ * pairs: {iso: [пары, добавленные вручную]}, hide: {iso: [пары, убранные из дня]}. Возвращает {ok, error?}.
  */
-export function applyMarks(week, monday, changes, pairs) {
+export function applyMarks(week, monday, changes, pairs, hide) {
+  week.pairs ||= {}; week.hide ||= {};
   if (!isMonday(monday)) return { ok: false, error: 'Неделя должна начинаться с понедельника' };
   const days = new Set([0, 1, 2, 3, 4, 5].map((i) => addDays(monday, i)));
   if (!Array.isArray(changes) || changes.length > 2000) return { ok: false, error: 'Неверные изменения' };
@@ -147,11 +148,12 @@ export function applyMarks(week, monday, changes, pairs) {
       ((week.m[ch.s] ||= {})[ch.d] ||= {})[p] = ch.v;
     }
   }
-  if (pairs && typeof pairs === 'object') {
-    for (const [d, list] of Object.entries(pairs)) {
+  for (const [field, val] of [['pairs', pairs], ['hide', hide]]) {
+    if (!val || typeof val !== 'object') continue;
+    for (const [d, list] of Object.entries(val)) {
       if (!days.has(d) || !Array.isArray(list)) continue;
       const nums = [...new Set(list.map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 8))].sort((a, b) => a - b);
-      if (nums.length) week.pairs[d] = nums; else delete week.pairs[d];
+      if (nums.length) week[field][d] = nums; else delete week[field][d];
     }
   }
   return { ok: true };

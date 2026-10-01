@@ -105,7 +105,7 @@ export default async (req: Request, _context: unknown) => {
     if (!course) return fail(req, 'Нет такого курса');
     const key = weekKey(course, body.w);
     const week = (await s.get(key, { type: 'json' })) || emptyWeek();
-    const r = applyMarks(week, body.w, body.changes || [], body.pairs);
+    const r = applyMarks(week, body.w, body.changes || [], body.pairs, body.hide);
     if (!r.ok) return fail(req, r.error);
     if ((body.changes || []).length) { week.at = new Date().toISOString(); week.by = by; }
     await s.setJSON(key, week);

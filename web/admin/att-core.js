@@ -59,9 +59,10 @@ export const activeStudents = (students, from, to) => (students || []).filter((s
 
 export const markOf = (week, sid, iso, pair) => (week && week.m && week.m[sid] && week.m[sid][iso] && week.m[sid][iso][pair]) || null;
 
-/** Пары дня: по расписанию + те, где уже стоят отметки + сохранённые в неделе. */
+/** Пары дня: по расписанию + добавленные вручную + те, где стоят отметки; минус убранные вручную. */
 export function dayPairs(week, iso, schedule) {
-  const set = new Set(schedule || []);
+  const hidden = new Set(((week && week.hide && week.hide[iso]) || []).map(Number));
+  const set = new Set((schedule || []).filter((n) => !hidden.has(n)));
   for (const n of (week && week.pairs && week.pairs[iso]) || []) set.add(Number(n));
   for (const days of Object.values((week && week.m) || {})) for (const p of Object.keys(days[iso] || {})) set.add(Number(p));
   return [...set].filter((n) => n > 0).sort((a, b) => a - b);

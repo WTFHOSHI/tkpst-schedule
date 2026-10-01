@@ -60,6 +60,10 @@ test('отметки', () => {
   ], { '2026-09-28': [2, 1, 1], '2026-10-03': [], '2026-11-01': [1] }).ok);
   assert.deepEqual(w.m, { a: { '2026-09-28': { 1: 'N', 2: 'B' } }, b: { '2026-10-03': { 3: 'P' } } });
   assert.deepEqual(w.pairs, { '2026-09-28': [1, 2] });
+  assert.ok(L.applyMarks(w, '2026-09-28', [], null, { '2026-09-29': [3, 3] }).ok);
+  assert.deepEqual(w.hide, { '2026-09-29': [3] });
+  L.applyMarks(w, '2026-09-28', [], null, { '2026-09-29': [] });
+  assert.deepEqual(w.hide, {});
   L.applyMarks(w, '2026-09-28', [{ s: 'b', d: '2026-10-03', p: 3, v: null }, { s: 'a', d: '2026-09-28', p: 1, v: null }]);
   assert.deepEqual(w.m, { a: { '2026-09-28': { 2: 'B' } } });
 });

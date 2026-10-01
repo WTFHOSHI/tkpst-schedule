@@ -148,3 +148,10 @@ ol.steps a { color: var(--primary); text-decoration: underline; }
   .att-toolbar .small-btn { padding: 6px 8px; }
 }
 .att-table .no { display: inline-block; margin-right: 8px; }
+.att-plist { display: flex; flex-direction: column; }
+.att-prow { display: grid; grid-template-columns: 64px 1fr auto; align-items: center; gap: 8px; padding: 8px 2px; border-bottom: 1px solid var(--outline); }
+.att-prow:last-child { border-bottom: 0; }
+.att-prow b { font-size: 15px; color: var(--muted); }
+.att-prow.on b { color: var(--text); }
+.att-prow .college { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-prow .small-btn { border: 1px solid var(--outline); padding: 6px 12px; font-weight: 600; }

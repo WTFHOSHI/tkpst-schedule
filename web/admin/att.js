@@ -152,16 +152,27 @@ async function flush() {
   }
 }
 
-async function addPair(iso, n) {
-  const w = st.week || { pairs: {} };
-  const list = [...new Set([...(w.pairs[iso] || []), n])];
-  try { st.week = await api('marks', { course: st.course, w: st.monday, changes: [], pairs: { [iso]: list } }); renderContent(); }
-  catch (e) { alert('Не получилось: ' + e.message); }
-}
-async function removePair(iso, n) {
-  const w = st.week || { pairs: {} };
-  try { st.week = await api('marks', { course: st.course, w: st.monday, changes: [], pairs: { [iso]: (w.pairs[iso] || []).filter((x) => x !== n) } }); renderContent(); }
-  catch (e) { alert('Не получилось: ' + e.message); }
+/** Добавить пару в день (n), или убрать её из дня. Убранная пара по расписанию запоминается как скрытая. */
+async function changePair(iso, n, add) {
+  await flush();
+  const w = st.week || { pairs: {}, hide: {}, m: {} };
+  const manual = new Set((w.pairs && w.pairs[iso]) || []);
+  const hidden = new Set((w.hide && w.hide[iso]) || []);
+  const sched = (await scheduleDay(iso)).pairs || [];
+  const changes = [];
+  if (add) {
+    hidden.delete(n);
+    if (!sched.includes(n)) manual.add(n);
+  } else {
+    manual.delete(n);
+    if (sched.includes(n)) hidden.add(n);
+    for (const [sid, days] of Object.entries(w.m || {})) if (days[iso] && days[iso][n]) changes.push({ s: sid, d: iso, p: n, v: null });
+    for (const k of [...st.pending.keys()]) if (k.endsWith(`|${iso}|${n}`) && k.startsWith(st.course + '|' + st.monday + '|')) st.pending.delete(k);
+  }
+  try {
+    st.week = await api('marks', { course: st.course, w: st.monday, changes, pairs: { [iso]: [...manual] }, hide: { [iso]: [...hidden] } });
+    renderContent(); renderPanel();
+  } catch (e) { alert('Не получилось: ' + e.message); }
 }
 
 async function loadWeek(silent = false) {
@@ -172,6 +183,7 @@ async function loadWeek(silent = false) {
     if (st.course + '|' + st.monday !== key) return;
     st.week = w; st.weekKey = key;
     renderContent();
+    if (st.panel === 'pairs' && !silent) renderPanel();
   } catch (e) {
     if (!silent && st.course + '|' + st.monday === key) { st.week = { m: {}, pairs: {}, error: e.message }; renderContent(); }
   }
@@ -277,6 +289,7 @@ function shell() {
       <div class="att-toolbar">
         <div class="seg att-view"><button data-v="day">День</button><button data-v="week">Неделя</button></div>
         ${can('export') ? `<button class="small-btn" data-panel="export">${I.dl}<span>Excel</span></button>` : ''}
+        <button class="small-btn" data-panel="pairs">Пары</button>
         ${can('students') ? '<button class="small-btn" data-panel="students">Студенты</button>' : ''}
         ${can('settings') ? '<button class="small-btn" data-panel="settings">Настройки</button>' : ''}
       </div>
@@ -383,14 +396,13 @@ function renderDayView(box, days, studs, sched) {
       ${pairs.length ? `<div class="att-grid" style="--n:${pairs.length}">
         <div class="att-h name"><button class="small-btn" data-allday title="Всем без отметки поставить ✓">Остальные ✓ на весь день</button></div>
         ${pairs.map((p) => `<div class="att-h"><b>${p} пара</b><span class="subj" title="${esc(sc.titles[p] || '')}">${esc(sc.titles[p] || (manual.has(p) ? 'добавлена' : ''))}</span>
-          <button class="small-btn" data-rest="${p}" title="Всем без отметки поставить ✓">ост. ✓</button>
-          ${manual.has(p) && !sc.pairs.includes(p) && !studs.some((s) => cell(s.id, d, p)) ? `<button class="small-btn" data-rmpair="${p}">убрать</button>` : ''}</div>`).join('')}
+          <button class="small-btn" data-rest="${p}" title="Всем без отметки поставить ✓">ост. ✓</button></div>`).join('')}
         ${studs.map((s, i) => `
           <button class="att-name" data-sday="${s.id}" title="Поставить кисть на все пары дня"><span class="no">${i + 1}</span><span class="nm">${esc(s.name)}</span></button>
           ${pairs.map((p) => { const v = cell(s.id, d, p); return `<button class="att-cell${v ? ' m-' + v : ''}" data-s="${s.id}" data-p="${p}" aria-label="${esc(s.name)}, ${p} пара">${markHtml(v)}</button>`; }).join('')}`).join('')}
       </div>` : ''}
       <div class="att-day-foot">
-        <button class="small-btn" data-addpair>+ Добавить пару</button>
+        <button class="small-btn" data-pairsday>Добавить / убрать пару</button>
         <span class="college">${Object.keys(absentToday).length ? 'Пропусков за день: ' + MARKS.filter((m) => absentToday[m.code]).map((m) => `${m.label} ${absentToday[m.code]}`).join(', ') : ''}</span>
       </div>
     </div>`;
@@ -407,12 +419,7 @@ function renderDayView(box, days, studs, sched) {
   const rest = (ps) => setMarks(studs.flatMap((s) => ps.filter((p) => !cell(s.id, d, p)).map((p) => ({ sid: s.id, iso: d, p, v: 'P' }))));
   box.querySelectorAll('[data-rest]').forEach((b) => { b.onclick = () => rest([Number(b.dataset.rest)]); });
   const ad = box.querySelector('[data-allday]'); if (ad) ad.onclick = () => rest(pairs);
-  box.querySelectorAll('[data-rmpair]').forEach((b) => { b.onclick = () => removePair(d, Number(b.dataset.rmpair)); });
-  box.querySelector('[data-addpair]').onclick = () => {
-    const def = (pairs.length ? Math.max(...pairs) : 0) + 1;
-    const n = Number(prompt('Номер пары (1–8):', String(Math.min(8, def))));
-    if (Number.isInteger(n) && n >= 1 && n <= 8) addPair(d, n);
-  };
+  box.querySelector('[data-pairsday]').onclick = () => openPairs(d);
 }
 
 function renderWeekTable(box, days, studs, sched) {
@@ -425,7 +432,7 @@ function renderWeekTable(box, days, studs, sched) {
   const today = todayIso();
   const errs = days.filter((d) => sched[d].error);
   box.innerHTML = `
-    ${errs.length ? `<div class="warn">Расписание не загрузилось на ${errs.map(dMon).join(', ')}. Пары с отметками всё равно видны; добавить пару — в режиме «День».</div>` : ''}
+    ${errs.length ? `<div class="warn">Расписание не загрузилось на ${errs.map(dMon).join(', ')}. Пары с отметками всё равно видны; добавить или убрать пару — кнопка «Пары».</div>` : ''}
     ${sched[days[0]].none ? `<div class="college" style="padding:0 4px">Для ${st.course} курса не выбрана группа — расписание не подтягивается.</div>` : ''}
     <div class="card att-wk"><div class="att-scroll"><table class="att-table">
       <thead>
@@ -456,7 +463,54 @@ function renderPanel() {
   if (st.panel === 'export') return exportPanel(box);
   if (st.panel === 'students') return studentsPanel(box);
   if (st.panel === 'settings') return settingsPanel(box);
+  if (st.panel === 'pairs') return pairsPanel(box);
   box.innerHTML = '';
+}
+
+function openPairs(day) {
+  st.pairDay = day;
+  st.panel = 'pairs';
+  renderPanel();
+  const box = $app.querySelector('[data-panelbox]');
+  if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** Пары дня: какие есть (по расписанию / добавлены вручную), убрать или добавить любую из 1–8. */
+async function pairsPanel(box) {
+  const days = weekDays(st.monday);
+  if (!days.includes(st.pairDay)) st.pairDay = days.includes(st.day) ? st.day : days[0];
+  const d = st.pairDay;
+  box.innerHTML = `<div class="card att-panel"><b>Пары · неделя ${ddmm(st.monday)} – ${ddmm(addDays(st.monday, 5))}</b>
+    <div class="chips att-days" style="margin-top:10px">${days.map((x, i) => `<button class="chip${x === d ? ' sel' : ''}" data-pd="${x}"><span>${WD[i]}</span><b>${Number(x.slice(8))}</b><i></i></button>`).join('')}</div>
+    <div data-plist><p class="college">Загружаю расписание…</p></div></div>`;
+  box.querySelectorAll('[data-pd]').forEach((b) => { b.onclick = () => { st.pairDay = b.dataset.pd; pairsPanel(box); }; });
+  const sc = await scheduleDay(d);
+  if (st.panel !== 'pairs' || st.pairDay !== d || !st.week) return;
+  const wv = weekView();
+  const shown = new Set(dayPairs(wv, d, sc.pairs));
+  const hidden = new Set((wv.hide && wv.hide[d]) || []);
+  const studs = activeStudents(course().students, d, d);
+  const marksIn = (n) => studs.filter((s) => cell(s.id, d, n)).length;
+  const rows = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
+    const inSched = (sc.pairs || []).includes(n);
+    const on = shown.has(n);
+    const note = on ? (inSched ? esc(sc.titles[n] || 'по расписанию') : 'добавлена вручную')
+      : inSched && hidden.has(n) ? `убрана · по расписанию: ${esc(sc.titles[n] || '')}` : 'нет';
+    return `<div class="att-prow${on ? ' on' : ''}"><b>${n} пара</b><span class="college">${note}${on && marksIn(n) ? ` · отметок: ${marksIn(n)}` : ''}</span>
+      <button class="small-btn${on ? ' danger' : ''}" data-pn="${n}" data-on="${on ? 1 : 0}">${on ? 'Убрать' : 'Добавить'}</button></div>`;
+  }).join('');
+  box.querySelector('[data-plist]').innerHTML = `
+    ${sc.error ? `<p class="warn">Расписание на этот день не загрузилось — показаны только добавленные пары и пары с отметками.</p>` : ''}
+    <p class="college" style="margin:8px 0">${WD[weekday(d) - 1]}, ${dMonth(d)}. Убранная пара пропадает из отметок и из Excel; её отметки за этот день стираются.</p>
+    <div class="att-plist">${rows}</div>`;
+  box.querySelectorAll('[data-pn]').forEach((b) => {
+    b.onclick = async () => {
+      const n = Number(b.dataset.pn), on = b.dataset.on === '1';
+      if (on && marksIn(n) && !confirm(`У ${n} пары ${dMon(d)} есть отметки (${marksIn(n)}). Убрать пару и стереть их?`)) return;
+      b.disabled = true; b.textContent = '…';
+      await changePair(d, n, !on);
+    };
+  });
 }
 
 function exportPanel(box) {
