@@ -1,0 +1,8 @@
+# Сервер посещаемости (Netlify Functions + Blobs). Base directory на Netlify: attendance-api
+[build]
+  publish = "public"
+  command = "echo api"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"

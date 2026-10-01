@@ -1,0 +1,9 @@
+{
+  "name": "tkpst-attendance-api",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test test/*.test.mjs" },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}

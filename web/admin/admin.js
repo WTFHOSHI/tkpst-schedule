@@ -372,4 +372,5 @@ async function save() {
 
 window.addEventListener('beforeunload', (e) => { if (st.data && dirty()) { e.preventDefault(); e.returnValue = ''; } });
 
-boot();
+// Запуск — из index.html (вкладка «Изменение расписания»).
+export const schedule = { start: boot, dirty: () => !!st.data && dirty(), discard: () => { st.data = null; } };

@@ -27,6 +27,8 @@ jobs:
           node-version: 22
       - name: Tests (логика сайта)
         run: node --test web/test/*.test.mjs
+      - name: Tests (сервер посещаемости)
+        run: node --test attendance-api/test/*.test.mjs
       - name: Check overrides.json
         run: node -e "JSON.parse(require('fs').readFileSync('web/overrides.json','utf8'))"
       - name: Prepare site
