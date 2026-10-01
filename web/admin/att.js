@@ -40,7 +40,7 @@ const st = {
 };
 try { Object.assign(st, JSON.parse(store.get(PREF_KEY) || '{}')); } catch { /* ignore */ }
 const savePrefs = () => store.set(PREF_KEY, JSON.stringify({ course: st.course, view: st.view, brush: st.brush }));
-const can = (what) => ({ students: ['admin', 'kurator'], settings: ['admin'], import: ['admin'] }[what] || []).includes(st.role);
+const can = (what) => ({ students: ['admin', 'starosta', 'kurator'], settings: ['admin', 'starosta'], import: ['admin', 'starosta'], export: ['admin', 'starosta', 'kurator'] }[what] || []).includes(st.role);
 const course = () => st.config.courses[st.course];
 const courseTitle = (c = st.course) => `${c} курс${st.config.courses[c].groupName ? ' · ' + st.config.courses[c].groupName : ''}`;
 const isWide = () => window.matchMedia('(min-width: 860px)').matches;
@@ -276,7 +276,7 @@ function shell() {
       </div>
       <div class="att-toolbar">
         <div class="seg att-view"><button data-v="day">День</button><button data-v="week">Неделя</button></div>
-        <button class="small-btn" data-panel="export">${I.dl}<span>Excel</span></button>
+        ${can('export') ? `<button class="small-btn" data-panel="export">${I.dl}<span>Excel</span></button>` : ''}
         ${can('students') ? '<button class="small-btn" data-panel="students">Студенты</button>' : ''}
         ${can('settings') ? '<button class="small-btn" data-panel="settings">Настройки</button>' : ''}
       </div>
@@ -351,7 +351,7 @@ async function renderContent() {
   const studs = activeStudents(course().students, days[0], days[5]);
   if (!studs.length) {
     box.innerHTML = `<div class="card"><b>В списке ${st.course} курса пока нет студентов.</b>
-      <p class="college">${can('students') ? 'Добавь их кнопкой «Студенты» выше' + (can('import') ? ' или загрузи старую таблицу в «Настройках»' : '') + '.' : 'Список заполняет куратор или администратор.'}</p></div>`;
+      <p class="college">${can('students') ? 'Добавь их кнопкой «Студенты» выше' + (can('import') ? ' или загрузи старую таблицу в «Настройках»' : '') + '.' : 'Список заполняет староста, куратор или администратор.'}</p></div>`;
     return;
   }
   const sched = {};

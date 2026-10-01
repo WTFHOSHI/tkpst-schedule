@@ -76,7 +76,7 @@ export default async (req: Request, _context: unknown) => {
   if (route === 'config' && req.method === 'GET') return json(req, await loadConfig(s));
 
   if (route === 'students' && req.method === 'POST') {
-    if (!role.students) return fail(req, 'Список студентов меняют куратор или администратор', 403);
+    if (!role.students) return fail(req, 'Нет права менять список студентов', 403);
     const config = await loadConfig(s);
     const r = studentOp(config, body);
     if (!r.ok) return fail(req, r.error);
@@ -85,7 +85,7 @@ export default async (req: Request, _context: unknown) => {
   }
 
   if (route === 'course' && req.method === 'POST') {
-    if (!role.settings) return fail(req, 'Группу курса меняет администратор', 403);
+    if (!role.settings) return fail(req, 'Нет права менять группу курса', 403);
     const config = await loadConfig(s);
     const r = courseOp(config, body);
     if (!r.ok) return fail(req, r.error);
@@ -129,7 +129,7 @@ export default async (req: Request, _context: unknown) => {
   }
 
   if (route === 'import' && req.method === 'POST') {
-    if (!role.import) return fail(req, 'Импорт делает администратор', 403);
+    if (!role.import) return fail(req, 'Нет права на импорт', 403);
     const course = courseOf(body.course);
     if (!course) return fail(req, 'Нет такого курса');
     const config = await loadConfig(s);

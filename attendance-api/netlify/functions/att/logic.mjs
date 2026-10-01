@@ -7,7 +7,7 @@ export const COURSES = ['1', '2', '3'];
 export const ROLES = {
   admin: { title: 'Администратор', students: true, settings: true, import: true },
   kurator: { title: 'Куратор', students: true, settings: false, import: false },
-  starosta: { title: 'Староста', students: false, settings: false, import: false },
+  starosta: { title: 'Староста', students: true, settings: true, import: true },
 };
 const DAY = 864e5;
 

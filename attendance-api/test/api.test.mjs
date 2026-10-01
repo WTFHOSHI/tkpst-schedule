@@ -79,7 +79,7 @@ test('импорт', () => {
 });
 
 test('обработчик запросов', async () => {
-  const env = { ATT_SECRET: 'test-secret', ATT_PASSWORD_ADMIN: 'adm-pass', ATT_PASSWORD_STAROSTA: 'st-pass' };
+  const env = { ATT_SECRET: 'test-secret', ATT_PASSWORD_ADMIN: 'adm-pass', ATT_PASSWORD_STAROSTA: 'st-pass', ATT_PASSWORD_KURATOR: 'kur-pass' };
   globalThis.Netlify = { env: { get: (k) => env[k] }, context: { deploy: { context: 'production' } } };
   const { default: handler } = await import('../netlify/functions/att/att.mts');
   const O = 'https://wtfhoshi.github.io';
@@ -95,10 +95,10 @@ test('обработчик запросов', async () => {
   assert.equal((await call('POST', 'login', { password: 'bad' })).status, 401);
   const st = (await call('POST', 'login', { password: 'st-pass' })).body.token;
   const ad = (await call('POST', 'login', { password: 'adm-pass' })).body.token;
+  const ku = (await call('POST', 'login', { password: 'kur-pass' })).body.token;
   const cfg = (await call('GET', 'config', null, st)).body;
   assert.equal(cfg.courses[2].groupName, 'ИС-25-3С');
-  assert.equal((await call('POST', 'students', { course: 2, action: 'add', name: 'Тест Тестов' }, st)).status, 403);
-  const c2 = (await call('POST', 'students', { course: 2, action: 'add', name: 'Тест Тестов' }, ad)).body;
+    const c2 = (await call('POST', 'students', { course: 2, action: 'add', name: 'Тест Тестов' }, st)).body;
   const id = c2.courses[2].students[0].id;
   const w = (await call('POST', 'marks', { course: 2, w: '2026-09-28', changes: [{ s: id, d: '2026-09-29', p: 2, v: 'N' }] }, st)).body;
   assert.equal(w.m[id]['2026-09-29'][2], 'N');
@@ -110,5 +110,8 @@ test('обработчик запросов', async () => {
   assert.deepEqual(Object.keys(all), ['2025-10-06', '2026-09-28']);
   const part = (await call('GET', 'weeks?course=2&from=2026-01-01', null, st)).body.weeks;
   assert.deepEqual(Object.keys(part), ['2026-09-28']);
-  assert.equal((await call('POST', 'import', { course: 2, weeks: {} }, st)).status, 403);
+  assert.equal((await call('POST', 'import', { course: 2, weeks: {} }, ku)).status, 403);
+  assert.equal((await call('POST', 'course', { course: 3, groupId: 232, groupName: 'ИС-24-3С' }, ku)).status, 403);
+  assert.equal((await call('POST', 'course', { course: 3, groupId: 232, groupName: 'ИС-24-3С' }, st)).status, 200);
+  assert.equal((await call('POST', 'import', { course: 2, weeks: {} }, st)).status, 200);
 });
