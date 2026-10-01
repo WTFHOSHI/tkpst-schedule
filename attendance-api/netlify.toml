@@ -6,3 +6,12 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    X-Frame-Options = "DENY"
+    X-Robots-Tag = "noindex, nofollow"
+    Strict-Transport-Security = "max-age=31536000"

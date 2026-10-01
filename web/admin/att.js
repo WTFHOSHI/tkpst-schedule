@@ -447,8 +447,7 @@ function renderWeekTable(box, days, studs, sched) {
           return `<td class="${sep}"><button class="att-cell sm${v ? ' m-' + v : ''}" data-s="${s.id}" data-d="${c.d}" data-p="${c.p}">${markHtml(v)}</button></td>`;
         }).join('')}<td class="tot">${t.absent ? `<b>${t.absent}</b>${t.N ? ` <span class="bad">(Н ${t.N})</span>` : ''}` : '<span class="muted">0</span>'}</td></tr>`;
       }).join('')}</tbody>
-    </table></div>
-    <p class="college" style="margin:10px 2px 0">Клик по клетке ставит выбранную внизу отметку, повторный клик — стирает. Клавиши: 1 ✓, 2 Н, 3 Б, 4 У, 5 Р, 6 З, 0 — стереть.</p></div>`;
+    </table></div></div>`;
   box.querySelectorAll('.att-cell').forEach((b) => { b.onclick = () => tap(b.dataset.s, b.dataset.d, Number(b.dataset.p)); });
   box.querySelectorAll('[data-goday]').forEach((b) => { b.onclick = () => { st.day = b.dataset.goday; st.view = 'day'; savePrefs(); renderNav(); renderContent(); }; });
 }
@@ -500,7 +499,7 @@ async function pairsPanel(box) {
   }).join('');
   box.querySelector('[data-plist]').innerHTML = `
     ${sc.error ? `<p class="warn">Расписание на этот день не загрузилось — показаны только добавленные пары и пары с отметками.</p>` : ''}
-    <p class="college" style="margin:8px 0">${WD[weekday(d) - 1]}, ${dMonth(d)}. Убранная пара пропадает из отметок и из Excel; её отметки за этот день стираются.</p>
+    <p class="college" style="margin:8px 0">${WD[weekday(d) - 1]}, ${dMonth(d)}</p>
     <div class="att-plist">${rows}</div>`;
   box.querySelectorAll('[data-pn]').forEach((b) => {
     b.onclick = async () => {
@@ -521,8 +520,7 @@ function exportPanel(box) {
       <button class="btn outline" data-x="month">${monthTitle(st.month)} целиком</button>
       <button class="btn outline" data-x="course">Весь курс</button>
     </div>
-    <p class="college" data-xmsg>В файле: цветные отметки (зелёный — был, красный — неуважительная, жёлтый — болеет, синий — уважительная, фиолетовый — работа, бирюзовый — по заявлению), легенда и итоги по каждому студенту.
-    Открыть в Google Таблицах: Google Диск → «Создать» → «Загрузить файл», затем «Открыть в Google Таблицах» (или в таблице: Файл → Импорт → Загрузка).</p>
+    <p class="college" data-xmsg>Открыть в Google Таблицах: Файл → Импорт → Загрузка.</p>
   </div>`;
   box.querySelectorAll('[data-x]').forEach((b) => { b.onclick = () => doExport(b.dataset.x, b); });
 }
@@ -566,7 +564,6 @@ function studentsPanel(box) {
   box.innerHTML = `<div class="card att-panel">
     <b>Студенты · ${esc(courseTitle())}</b>
     <div class="att-add"><input type="text" data-newname placeholder="Фамилия Имя Отчество"><button class="btn" data-add>Добавить</button></div>
-    <p class="college">Новый студент появится в списке с недели ${dMon(st.monday)}. «Убрать» скрывает студента начиная с этой недели — прошлые отметки остаются.</p>
     <div class="att-slist">${active.map((s, i) => `<div class="att-srow"><span class="no">${i + 1}</span><span class="nm">${esc(s.name)}${s.from ? ` <span class="college">с ${dMon(s.from)}</span>` : ''}</span>
       <button class="small-btn" data-ren="${s.id}">Изменить</button><button class="small-btn danger" data-rm="${s.id}">Убрать</button></div>`).join('') || '<p class="college">Пока никого.</p>'}</div>
     ${gone.length ? `<b style="display:block;margin-top:12px">Убраны из списка</b><div class="att-slist">${gone.map((s) => `<div class="att-srow"><span class="nm">${esc(s.name)} <span class="college">до ${dMon(s.to)}</span></span><button class="small-btn" data-back="${s.id}">Вернуть</button></div>`).join('')}</div>` : ''}
@@ -588,7 +585,7 @@ function studentsPanel(box) {
 async function settingsPanel(box) {
   box.innerHTML = `<div class="card att-panel">
     <b>Загрузить старую таблицу (.xlsx)</b>
-    <p class="college">Группа везде одна — <b>${GROUP_NAME}</b>, расписание подтягивается по ней. Формат таблицы как в первой присланной: на листе строка «№ | ФИО», над ней даты, под каждой датой 4 колонки (пары 1–4). Отметки «+», «н», «нб», «нр», «нз» станут ✓, Н, Б, Р, З. Отметки попадут в <b>${esc(courseTitle())}</b>; новых студентов добавлю сам.</p>
+    <p class="college">Отметки попадут в <b>${esc(courseTitle())}</b>.</p>
     <input type="file" accept=".xlsx" data-file>
     <div data-imp></div>
   </div>`;

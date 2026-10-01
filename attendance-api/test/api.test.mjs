@@ -26,7 +26,7 @@ test('пароли и токены', () => {
   const t = L.signToken('starosta', 'xyz', 1000);
   assert.equal(L.verifyToken(t, 'xyz', 2000).role, 'starosta');
   assert.equal(L.verifyToken(t, 'other', 2000), null);
-  assert.equal(L.verifyToken(t, 'xyz', 1000 + 61 * 864e5), null);
+  assert.equal(L.verifyToken(t, 'xyz', 1000 + 31 * 864e5), null);
   assert.equal(L.verifyToken(t.replace(/.$/, 'A') === t ? t.replace(/.$/, 'B') : t.replace(/.$/, 'A'), 'xyz', 2000), null);
 });
 
@@ -97,6 +97,9 @@ test('обработчик запросов', async () => {
   assert.equal((await call('OPTIONS', 'week')).cors, O);
   assert.equal((await call('GET', 'config')).status, 401);
   assert.equal((await call('POST', 'login', { password: 'bad' })).status, 401);
+  for (let i = 0; i < 7; i++) await call('POST', 'login', { password: 'bad' });
+  assert.equal((await call('POST', 'login', { password: 'st-pass' })).status, 429); // подбор заблокирован
+  for (const k of [...globalThis.__blobs.keys()]) if (k.startsWith('rl/')) globalThis.__blobs.delete(k);
   const st = (await call('POST', 'login', { password: 'st-pass' })).body.token;
   const ad = (await call('POST', 'login', { password: 'adm-pass' })).body.token;
   const ku = (await call('POST', 'login', { password: 'kur-pass' })).body.token;

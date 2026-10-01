@@ -40,8 +40,9 @@ function cors(req: Request): Record<string, string> {
   } : { Vary: 'Origin' };
 }
 
+const SECURITY = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow', 'X-Frame-Options': 'DENY' };
 const json = (req: Request, body: unknown, status = 200) => new Response(JSON.stringify(body), {
-  status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors(req) },
+  status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...SECURITY, ...cors(req) },
 });
 const fail = (req: Request, error: string, status = 400) => json(req, { error }, status);
 
@@ -54,7 +55,7 @@ async function loadConfig(s: ReturnType<typeof store>) {
 }
 const weekKey = (course: string, monday: string) => `w/${course}/${monday}`;
 
-export default async (req: Request, _context: unknown) => {
+export default async (req: Request, context: any) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(req) });
   const url = new URL(req.url);
   const route = url.pathname.replace(/^\/api\/?/, '').replace(/\/$/, '');
@@ -67,12 +68,24 @@ export default async (req: Request, _context: unknown) => {
   }
 
   if (route === 'login' && req.method === 'POST') {
+    // Защита от подбора: после 8 неверных паролей с одного адреса — пауза 15 минут.
+    const ip = String((context && context.ip) || req.headers.get('x-nf-client-connection-ip') || 'unknown').slice(0, 64);
+    const rlKey = 'rl/' + ip.replace(/[^0-9a-fA-F:.]/g, '_');
+    const rs = store();
+    const rl = (await rs.get(rlKey, { type: 'json' })) || { n: 0, since: Date.now() };
+    if (Date.now() - rl.since > 15 * 60e3) { rl.n = 0; rl.since = Date.now(); }
+    if (rl.n >= 8) return fail(req, 'Слишком много попыток. Подожди 15 минут.', 429);
     const role = roleForPassword(body.password, {
       admin: Netlify.env.get('ATT_PASSWORD_ADMIN'),
       kurator: Netlify.env.get('ATT_PASSWORD_KURATOR'),
       starosta: Netlify.env.get('ATT_PASSWORD_STAROSTA'),
     });
-    if (!role) { await new Promise((r) => setTimeout(r, 600)); return fail(req, 'Неверный пароль', 401); }
+    if (!role) {
+      rl.n++; await rs.setJSON(rlKey, rl);
+      await new Promise((r) => setTimeout(r, 600));
+      return fail(req, 'Неверный пароль', 401);
+    }
+    if (rl.n) await rs.setJSON(rlKey, { n: 0, since: Date.now() });
     return json(req, { token: signToken(role, secret), role, title: ROLES[role as keyof typeof ROLES].title });
   }
 

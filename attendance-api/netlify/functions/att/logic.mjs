@@ -33,7 +33,7 @@ export function roleForPassword(password, env) {
   return found;
 }
 
-export function signToken(role, secret, now = Date.now(), days = 60) {
+export function signToken(role, secret, now = Date.now(), days = 30) {
   const payload = b64u(JSON.stringify({ role, exp: now + days * DAY }));
   const sig = b64u(createHmac('sha256', secret).update(payload).digest());
   return `${payload}.${sig}`;
