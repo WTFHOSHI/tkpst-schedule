@@ -324,12 +324,10 @@ function renderStatus() {
   const el = $app && $app.querySelector('[data-status]');
   if (!el) return;
   const w = st.week;
-  const m = MARK[st.brush];
-  const hint = `Кисть: <b>${m ? esc(m.label + ' — ' + m.title) : 'стереть'}</b>. Нажимай на клетки.`;
   el.innerHTML = st.saveErr ? `<span class="att-err">${esc(st.saveErr)}</span>`
     : st.inflight || st.pending.size ? 'Сохраняю…'
-      : w && w.at ? `${hint} <span class="muted">Сохранено · ${esc(w.by)}, ${new Date(w.at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' })}</span>`
-        : hint;
+      : w && w.at ? `<span class="muted">Сохранено · ${esc(w.by)}, ${new Date(w.at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' })}</span>`
+        : '';
 }
 
 /** Нажатие на клетку: та же отметка — стереть, иначе поставить кисть. */
@@ -470,7 +468,7 @@ function exportPanel(box) {
       <button class="btn outline" data-x="month">${monthTitle(st.month)} целиком</button>
       <button class="btn outline" data-x="course">Весь курс</button>
     </div>
-    <p class="college" data-xmsg>В файле: цветные отметки (зелёный — был, красный — прогул, жёлтый — болеет, синий — уважительная, фиолетовый — работа, бирюзовый — по заявлению), легенда и итоги по каждому студенту.
+    <p class="college" data-xmsg>В файле: цветные отметки (зелёный — был, красный — неуважительная, жёлтый — болеет, синий — уважительная, фиолетовый — работа, бирюзовый — по заявлению), легенда и итоги по каждому студенту.
     Открыть в Google Таблицах: Google Диск → «Создать» → «Загрузить файл», затем «Открыть в Google Таблицах» (или в таблице: Файл → Импорт → Загрузка).</p>
   </div>`;
   box.querySelectorAll('[data-x]').forEach((b) => { b.onclick = () => doExport(b.dataset.x, b); });

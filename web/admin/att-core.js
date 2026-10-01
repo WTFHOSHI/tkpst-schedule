@@ -4,7 +4,7 @@
 /** Отметки. P — был, N — нет, B — болеет, U — уважительная, R — работа, Z — по заявлению. */
 export const MARKS = [
   { code: 'P', label: '✓', title: 'Был на паре', short: 'был', fill: 'C6EFCE', color: '006100' },
-  { code: 'N', label: 'Н', title: 'Не был (прогул)', short: 'нет', fill: 'FFC7CE', color: '9C0006' },
+  { code: 'N', label: 'Н', title: 'Не был, неуважительная причина', short: 'неуваж.', fill: 'FFC7CE', color: '9C0006' },
   { code: 'B', label: 'Б', title: 'Болеет', short: 'болеет', fill: 'FFEB9C', color: '7A4A00' },
   { code: 'U', label: 'У', title: 'Уважительная причина', short: 'уваж.', fill: 'BDD7EE', color: '1F4E79' },
   { code: 'R', label: 'Р', title: 'Работает', short: 'работа', fill: 'E4DFEC', color: '5B2C6F' },
