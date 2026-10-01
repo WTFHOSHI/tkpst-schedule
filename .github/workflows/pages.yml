@@ -37,6 +37,8 @@ jobs:
           cp -r web/index.html web/style.css web/sw.js web/manifest.webmanifest web/overrides.json web/js web/icons web/admin _site/
           # новая версия кэша офлайн-оболочки на каждую сборку
           sed -i "s/tkpst-shell-v1/tkpst-shell-${{ github.run_number }}/" _site/sw.js
+          # новая версия файлов админки — чтобы браузер не держал старые из кэша
+          sed -i "s/__V__/${{ github.run_number }}/g" _site/admin/index.html _site/admin/att.js
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

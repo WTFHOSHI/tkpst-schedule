@@ -4,7 +4,7 @@ import { T, buildTimeline, setOverrides, parseLessons } from '../js/core.js';
 import {
   MARKS, MARK, ABSENT, addDays, weekday, mondayOf, weekDays, ym, ddmm, dMon, dMonth, monthTitle, WD,
   weeksOfMonth, monthOfWeek, activeStudents, dayPairs, studentTotals, attendanceWorkbook, buildXlsx, parseOldXlsx,
-} from './att-core.js';
+} from './att-core.js?v=__V__';
 
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname); // локальная проверка
 const API = LOCAL ? '/api' : 'https://tkpst-poseshchaemost.netlify.app/api';
