@@ -9,7 +9,8 @@ import {
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname); // локальная проверка
 const API = LOCAL ? '/api' : 'https://tkpst-poseshchaemost.netlify.app/api';
 const SCHED = LOCAL ? '/sched' : 'https://api.thisishyum.ru/schedule_api/tyumen';
-const OWN_GROUP = 196; // группа сайта: к ней применяются изменения из вкладки «Изменение расписания»
+const OWN_GROUP = 196; // ИС-25-3С — одна группа на всех курсах; к ней применяются изменения из «Изменения расписания»
+const GROUP_NAME = 'ИС-25-3С';
 const TOKEN_KEY = 'att_token';
 const PREF_KEY = 'att_prefs';
 
@@ -42,7 +43,7 @@ try { Object.assign(st, JSON.parse(store.get(PREF_KEY) || '{}')); } catch { /* i
 const savePrefs = () => store.set(PREF_KEY, JSON.stringify({ course: st.course, view: st.view, brush: st.brush }));
 const can = (what) => ({ students: ['admin', 'starosta', 'kurator'], settings: ['admin', 'starosta'], import: ['admin', 'starosta'], export: ['admin', 'starosta', 'kurator'] }[what] || []).includes(st.role);
 const course = () => st.config.courses[st.course];
-const courseTitle = (c = st.course) => `${c} курс${st.config.courses[c].groupName ? ' · ' + st.config.courses[c].groupName : ''}`;
+const courseTitle = (c = st.course) => `${c} курс · ${GROUP_NAME}`;
 const isWide = () => window.matchMedia('(min-width: 860px)').matches;
 const viewMode = () => st.view || (isWide() ? 'week' : 'day');
 
@@ -70,8 +71,7 @@ async function api(path, body) {
 
 /** Пары дня по реальному расписанию группы курса: {pairs: [n], titles: {n: предмет}} */
 async function scheduleDay(iso) {
-  const gid = course().groupId;
-  if (!gid) return { pairs: [], titles: {}, none: true };
+  const gid = OWN_GROUP;
   const key = gid + '|' + iso;
   if (st.schedule.has(key)) return st.schedule.get(key);
   try {
@@ -225,6 +225,7 @@ function login(error = '') {
 }
 
 async function boot() {
+  st.token = store.get(TOKEN_KEY) || ''; // общий вход с «Изменением расписания»
   if (!st.token) return login();
   $app.innerHTML = `<main class="admin"><div class="card">Загружаю…</div></main>`;
   try {
@@ -291,7 +292,7 @@ function shell() {
         ${can('export') ? `<button class="small-btn" data-panel="export">${I.dl}<span>Excel</span></button>` : ''}
         <button class="small-btn" data-panel="pairs">Пары</button>
         ${can('students') ? '<button class="small-btn" data-panel="students">Студенты</button>' : ''}
-        ${can('settings') ? '<button class="small-btn" data-panel="settings">Настройки</button>' : ''}
+        ${can('import') ? '<button class="small-btn" data-panel="settings">Загрузить таблицу</button>' : ''}
       </div>
       <div data-panelbox></div>
       <div data-content></div>
@@ -362,7 +363,7 @@ async function renderContent() {
   const studs = activeStudents(course().students, days[0], days[5]);
   if (!studs.length) {
     box.innerHTML = `<div class="card"><b>В списке ${st.course} курса пока нет студентов.</b>
-      <p class="college">${can('students') ? 'Добавь их кнопкой «Студенты» выше' + (can('import') ? ' или загрузи старую таблицу в «Настройках»' : '') + '.' : 'Список заполняет староста, куратор или администратор.'}</p></div>`;
+      <p class="college">${can('students') ? 'Добавь их кнопкой «Студенты» выше' + (can('import') ? ' или загрузи старую таблицу кнопкой «Загрузить таблицу»' : '') + '.' : 'Список заполняет староста, куратор или администратор.'}</p></div>`;
     return;
   }
   const sched = {};
@@ -391,7 +392,6 @@ function renderDayView(box, days, studs, sched) {
       <div class="prow-head"><h2 style="margin:0">${WD[weekday(d) - 1]}, ${dMonth(d)}</h2>
         <span class="college">${filled} из ${studs.length * pairs.length} отмечено</span></div>
       ${sc.error ? `<p class="warn">Расписание не загрузилось (${esc(sc.error)}). Пары можно добавить вручную.</p>` : ''}
-      ${sc.none ? `<p class="college">Для ${st.course} курса не выбрана группа — расписание не подтягивается${can('settings') ? ' (выбери в «Настройках»)' : ''}. Пары можно добавить вручную.</p>` : ''}
       ${!pairs.length ? `<p class="college">По расписанию пар нет.</p>` : ''}
       ${pairs.length ? `<div class="att-grid" style="--n:${pairs.length}">
         <div class="att-h name"><button class="small-btn" data-allday title="Всем без отметки поставить ✓">Остальные ✓ на весь день</button></div>
@@ -433,7 +433,6 @@ function renderWeekTable(box, days, studs, sched) {
   const errs = days.filter((d) => sched[d].error);
   box.innerHTML = `
     ${errs.length ? `<div class="warn">Расписание не загрузилось на ${errs.map(dMon).join(', ')}. Пары с отметками всё равно видны; добавить или убрать пару — кнопка «Пары».</div>` : ''}
-    ${sched[days[0]].none ? `<div class="college" style="padding:0 4px">Для ${st.course} курса не выбрана группа — расписание не подтягивается.</div>` : ''}
     <div class="card att-wk"><div class="att-scroll"><table class="att-table">
       <thead>
         <tr><th class="sn" rowspan="2">Студент</th>${days.map((d) => { const n = cols.filter((c) => c.d === d).length; return `<th colspan="${n}" class="dh${d === today ? ' today' : ''}"><button data-goday="${d}">${WD[weekday(d) - 1]} ${ddmm(d)}</button></th>`; }).join('')}<th rowspan="2" class="tot">Пропуски</th></tr>
@@ -547,7 +546,7 @@ async function doExport(kind, btn) {
     }
     if (kind === 'course' && !Object.keys(weeks).length) throw new Error('у курса пока нет отметок');
     const schedule = {};
-    const gid = course().groupId;
+    const gid = OWN_GROUP;
     for (const [k, v] of st.schedule) { const [g, d] = k.split('|'); if (Number(g) === gid && v.pairs) schedule[d] = v.pairs; }
     const wb = attendanceWorkbook({ kind, key, courseTitle: courseTitle(), students: course().students, weeks, schedule, exportedAt: todayIso() });
     const blob = new Blob([buildXlsx(wb.sheets)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -586,39 +585,13 @@ function studentsPanel(box) {
   box.querySelectorAll('[data-back]').forEach((b) => { b.onclick = () => op({ action: 'restore', id: b.dataset.back }); });
 }
 
-let groupsCache = null;
 async function settingsPanel(box) {
   box.innerHTML = `<div class="card att-panel">
-    <b>Группы курсов</b>
-    <p class="college">По группе подтягивается реальное расписание: в отметках показываются только те пары, что есть в этот день.</p>
-    <div class="att-groups">${['1', '2', '3'].map((c) => `<label class="lbl">${c} курс <select data-g="${c}"><option value="">— не выбрана —</option></select></label>`).join('')}</div>
-    <p class="college" data-gmsg>Загружаю список групп…</p>
-    ${can('import') ? `<b style="display:block;margin-top:14px">Загрузить старую таблицу (.xlsx)</b>
-    <p class="college">Формат как в твоей таблице: на листе строка «№ | ФИО», над ней даты, под каждой датой 4 колонки (пары 1–4). Отметки «+», «н», «нб», «нр», «нз» станут ✓, Н, Б, Р, З. Отметки попадут в <b>${esc(courseTitle())}</b>; новых студентов добавлю сам.</p>
+    <b>Загрузить старую таблицу (.xlsx)</b>
+    <p class="college">Группа везде одна — <b>${GROUP_NAME}</b>, расписание подтягивается по ней. Формат таблицы как в первой присланной: на листе строка «№ | ФИО», над ней даты, под каждой датой 4 колонки (пары 1–4). Отметки «+», «н», «нб», «нр», «нз» станут ✓, Н, Б, Р, З. Отметки попадут в <b>${esc(courseTitle())}</b>; новых студентов добавлю сам.</p>
     <input type="file" accept=".xlsx" data-file>
-    <div data-imp></div>` : ''}
+    <div data-imp></div>
   </div>`;
-  const msg = box.querySelector('[data-gmsg]');
-  try {
-    if (!groupsCache) {
-      const r = await fetch(`${SCHED}/colleges/1/groups`, { cache: 'no-store' });
-      if (!r.ok) throw new Error('сервер ответил ' + r.status);
-      groupsCache = (await r.json()).map((g) => ({ id: g.studentGroupId, name: g.name })).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-    }
-    box.querySelectorAll('[data-g]').forEach((sel) => {
-      const cur = st.config.courses[sel.dataset.g].groupId;
-      sel.innerHTML = '<option value="">— не выбрана —</option>' + groupsCache.map((g) => `<option value="${g.id}"${g.id === cur ? ' selected' : ''}>${esc(g.name)}</option>`).join('');
-      sel.onchange = async () => {
-        const g = groupsCache.find((x) => String(x.id) === sel.value);
-        try {
-          st.config = await api('course', { course: sel.dataset.g, groupId: g ? g.id : null, groupName: g ? g.name : '' });
-          msg.textContent = `Сохранено: ${sel.dataset.g} курс — ${g ? g.name : 'без группы'}.`;
-          renderNav(); renderContent();
-        } catch (e) { msg.textContent = 'Не сохранилось: ' + e.message; }
-      };
-    });
-    msg.textContent = '';
-  } catch (e) { msg.textContent = 'Список групп не загрузился: ' + e.message; }
 
   const file = box.querySelector('[data-file]');
   if (file) file.onchange = async () => {

@@ -8,6 +8,19 @@ import {
 } from './logic.mjs';
 
 const ORIGINS = ['https://wtfhoshi.github.io'];
+// Изменения расписания: сервер правит web/overrides.json в репозитории ключом GitHub владельца, который хранится здесь (закрыто).
+const GH_FILE = 'https://api.github.com/repos/WTFHOSHI/tkpst-schedule/contents/web/overrides.json';
+const GH_KEY = 'secret/github';
+
+async function gh(token: string, url: string, init: RequestInit = {}) {
+  const r = await fetch(url, { ...init, headers: {
+    Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'User-Agent': 'tkpst-admin',
+    'X-GitHub-Api-Version': '2022-11-28', ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+  } });
+  let body: any = null;
+  try { body = await r.json(); } catch { /* пусто */ }
+  return { status: r.status, ok: r.ok, body };
+}
 
 function store() {
   const opts = { name: 'attendance', consistency: 'strong' as const };
@@ -126,6 +139,41 @@ export default async (req: Request, _context: unknown) => {
     const weeks: Record<string, unknown> = {};
     await Promise.all(keys.map(async (k) => { weeks[k.slice(-10)] = await s.get(k, { type: 'json' }); }));
     return json(req, { weeks });
+  }
+
+  // ---------- Изменения расписания (overrides.json) ----------
+
+  if (route === 'github' && req.method === 'GET') return json(req, { configured: !!(await s.get(GH_KEY)) });
+
+  if (route === 'github' && req.method === 'POST') {
+    if (!role.settings) return fail(req, 'Ключ GitHub подключает администратор или староста', 403);
+    const token = String(body.token || '').trim();
+    if (token.length < 20 || token.length > 300) return fail(req, 'Это не похоже на ключ GitHub');
+    const test = await gh(token, GH_FILE + '?ref=main');
+    if (!test.ok) return fail(req, 'GitHub не принял ключ: ' + ((test.body && test.body.message) || test.status));
+    await s.set(GH_KEY, token);
+    return json(req, { ok: true });
+  }
+
+  if (route === 'overrides') {
+    const token = await s.get(GH_KEY);
+    if (!token) return json(req, { error: 'Ключ GitHub ещё не подключён', code: 'no_github' }, 409);
+    if (req.method === 'GET') {
+      const f = await gh(token, `${GH_FILE}?ref=main&t=${Date.now()}`);
+      if (!f.ok) return fail(req, 'GitHub: ' + ((f.body && f.body.message) || f.status), 502);
+      return json(req, { text: Buffer.from(f.body.content || '', 'base64').toString('utf8'), sha: f.body.sha });
+    }
+    if (req.method === 'POST') {
+      const text = String(body.text || '');
+      if (text.length > 500000) return fail(req, 'Слишком большой файл');
+      try { JSON.parse(text); } catch { return fail(req, 'Неверные данные расписания'); }
+      const r = await gh(token, GH_FILE, { method: 'PUT', body: JSON.stringify({
+        message: `Админ (${by}): изменения расписания`, content: Buffer.from(text, 'utf8').toString('base64'), sha: body.sha, branch: 'main',
+      }) });
+      if (r.status === 409 || r.status === 422) return json(req, { error: 'Расписание изменили в другом месте — обнови страницу и повтори', code: 'conflict' }, 409);
+      if (!r.ok) return fail(req, 'GitHub: ' + ((r.body && r.body.message) || r.status), 502);
+      return json(req, { sha: r.body.content.sha });
+    }
   }
 
   if (route === 'import' && req.method === 'POST') {
