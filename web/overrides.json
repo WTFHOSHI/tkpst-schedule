@@ -1,6 +1,6 @@
 {
   "announcement": "",
-  "updatedAt": "2026-10-01T10:12:00.710Z",
+  "updatedAt": "2026-10-02T14:52:35.313Z",
   "days": {
     "2026-09-30": {
       "pairs": [
@@ -23,6 +23,20 @@
         {
           "number": 3,
           "status": "remote"
+        }
+      ]
+    },
+    "2026-10-03": {
+      "pairs": [
+        {
+          "number": 4,
+          "title": "Организация малого бизнеса",
+          "cabinet": "302-1",
+          "teacher": "Межецкая Т.А."
+        },
+        {
+          "number": 5,
+          "status": "cancelled"
         }
       ]
     }
