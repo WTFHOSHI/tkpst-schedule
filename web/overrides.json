@@ -1,19 +1,7 @@
 {
   "announcement": "",
-  "updatedAt": "2026-10-02T14:52:35.313Z",
+  "updatedAt": "2026-10-03T06:55:52.945Z",
   "days": {
-    "2026-09-30": {
-      "pairs": [
-        {
-          "number": 2,
-          "status": "remote"
-        },
-        {
-          "number": 3,
-          "status": "remote"
-        }
-      ]
-    },
     "2026-10-02": {
       "pairs": [
         {
@@ -31,7 +19,7 @@
         {
           "number": 4,
           "title": "Организация малого бизнеса",
-          "cabinet": "302-1",
+          "cabinet": "214",
           "teacher": "Межецкая Т.А."
         },
         {
