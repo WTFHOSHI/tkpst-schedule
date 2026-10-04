@@ -55,4 +55,52 @@ public enum Bells {
     public static func classHours(weekday: Int) -> [ClassHourSlot] {
         weekday == 1 ? [morningClassHour, afternoonClassHour] : []
     }
+
+    /// «8:05» / «08:05» → минуты от начала суток (или nil, если неверно).
+    public static func parseHm(_ s: String?) -> Int? {
+        let p = (s ?? "").trimmingCharacters(in: .whitespaces).split(separator: ":", omittingEmptySubsequences: false)
+        guard p.count == 2 || p.count == 3, p[1].count == 2, (1...2).contains(p[0].count),
+              let h = Int(p[0]), let m = Int(p[1]), (0...23).contains(h), (0...59).contains(m) else { return nil }
+        return h * 60 + m
+    }
+
+    static func read(_ list: [BellTime]?) -> [Slot] {
+        var out: [Slot] = []
+        for x in list ?? [] {
+            guard let a = parseHm(x.start), let b = parseHm(x.end), (1...8).contains(x.number), b > a,
+                  !out.contains(where: { $0.number == x.number }) else { continue }
+            out.append(Slot(number: x.number, start: a, end: b))
+        }
+        return out.sorted { $0.number < $1.number }
+    }
+
+    static func range(_ r: BellRange?, _ def: ClassHourSlot) -> ClassHourSlot {
+        guard let a = parseHm(r?.start), let b = parseHm(r?.end), b > a else { return def }
+        return ClassHourSlot(start: a, end: b, defaultTitle: def.defaultTitle)
+    }
+
+    /// Звонки дня с изменениями из админки: общее «Расписание звонков» (bells)
+    /// и время пар на конкретную дату (days[дата].times).
+    public static func pairs(weekday: Int, day: String?, overrides o: OverridesData?) -> [Slot] {
+        let global: [BellTime]?
+        switch weekday {
+        case 1: global = o?.bells?.mon
+        case 6: global = o?.bells?.sat
+        case 7: return []
+        default: global = o?.bells?.week
+        }
+        let g = read(global)
+        var slots = g.isEmpty ? pairs(weekday: weekday) : g
+        let t = read(o?.day(day)?.times)
+        if !t.isEmpty {
+            var byN: [Int: Slot] = [:]
+            for s in slots { byN[s.number] = s }
+            for s in t { byN[s.number] = s }
+            slots = byN.values.sorted { $0.number < $1.number }
+        }
+        return slots
+    }
+
+    public static func flag(_ o: OverridesData?) -> ClassHourSlot { range(o?.bells?.flag, morningClassHour) }
+    public static func classHour(_ o: OverridesData?) -> ClassHourSlot { range(o?.bells?.classHour, afternoonClassHour) }
 }

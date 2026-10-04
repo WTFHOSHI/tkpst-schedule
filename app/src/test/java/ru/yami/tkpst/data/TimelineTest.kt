@@ -146,4 +146,41 @@ class TimelineTest {
         assertEquals(false, o.lessons[0].added)
         assertEquals(1, Timeline.build(LocalDate.of(2026, 10, 1), listOf(lesson(3, "12:05", "13:35")), own).count { it is Entry.Pair })
     }
+
+    private val mon = listOf(
+        ApiLesson("Классный час \"Разговоры о важном\"", "302-1", "", 1, "08:00:00", "08:30:00"),
+        ApiLesson("История", "306", "", 2, "08:30:00", "10:00:00"),
+        ApiLesson("Физра", "306", "", 3, "10:10:00", "11:40:00"),
+    )
+
+    @Test
+    fun admin_bellsChangeTimesAndBreaks() {
+        val week = listOf("08:00" to "09:30", "09:45" to "11:15", "12:00" to "13:30", "13:40" to "15:10", "15:20" to "16:50", "17:00" to "18:30")
+            .mapIndexed { i, (a, b) -> BellTime(i + 1, a, b) }
+        val o = OverridesData(bells = BellsData(week = week, flag = BellRange("07:50", "08:20")))
+        val e = Timeline.build(LocalDate.of(2026, 9, 29), listOf(lesson(1, "08:15", "09:45"), lesson(2, "09:55", "11:25")), o)
+        val p = e.filterIsInstance<Entry.Pair>()
+        assertEquals(listOf(t("08:00"), t("09:45")), p.map { it.start })
+        assertEquals(15L, e.filterIsInstance<Entry.Break>().single().minutes)
+        val m = Timeline.build(LocalDate.of(2026, 9, 28), mon, o)
+        assertEquals(t("07:50"), m[0].start)
+        assertEquals(t("08:30"), m.filterIsInstance<Entry.Pair>()[0].start)
+    }
+
+    @Test
+    fun admin_dayTimesAndFlagClassHourToggles() {
+        val o = OverridesData(days = mapOf(
+            "2026-09-28" to OverrideDay(flag = false, classHour = true),
+            "2026-09-30" to OverrideDay(times = listOf(BellTime(2, "10:30", "11:30"), BellTime(3, "25:00", "13:00"))),
+            "2026-10-03" to OverrideDay(flag = true),
+        ))
+        val m = Timeline.build(LocalDate.of(2026, 9, 28), mon, o)
+        assertEquals(listOf(t("14:00")), m.filterIsInstance<Entry.ClassHour>().map { it.start })
+        assertTrue(m[0] is Entry.Pair)
+        val w = Timeline.build(LocalDate.of(2026, 9, 30), listOf(lesson(2, "09:55", "11:25"), lesson(3, "12:05", "13:35")), o)
+        assertEquals(listOf(t("10:30"), t("12:05")), w.filterIsInstance<Entry.Pair>().map { it.start })
+        val sat = Timeline.build(LocalDate.of(2026, 10, 3), emptyList(), o)
+        assertEquals(listOf(t("08:00")), sat.map { it.start })
+        assertTrue(sat[0] is Entry.ClassHour)
+    }
 }

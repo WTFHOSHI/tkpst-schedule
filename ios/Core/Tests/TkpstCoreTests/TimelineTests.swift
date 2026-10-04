@@ -119,4 +119,52 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(d.day("2026-09-30")?.pairs.first?.status, "remote")
         XCTAssertEqual(d.changedDays(comparedTo: OverridesData()), ["2026-09-30"])
     }
+
+    private let monLessons = [
+        ApiLesson(title: "Классный час \"Разговоры о важном\"", cabinet: "302-1", teacher: "", order: 1, startTime: "08:00:00", endTime: "08:30:00"),
+        ApiLesson(title: "История", cabinet: "306", teacher: "", order: 2, startTime: "08:30:00", endTime: "10:00:00"),
+        ApiLesson(title: "Физра", cabinet: "306", teacher: "", order: 3, startTime: "10:10:00", endTime: "11:40:00"),
+    ]
+
+    func testAdminBellsChangeTimesAndBreaks() {
+        let week = [("08:00", "09:30"), ("09:45", "11:15"), ("12:00", "13:30"), ("13:40", "15:10"), ("15:20", "16:50"), ("17:00", "18:30")]
+            .enumerated().map { BellTime($0.offset + 1, $0.element.0, $0.element.1) }
+        let o = OverridesData(bells: BellsData(week: week, flag: BellRange("07:50", "08:20")))
+        let e = Timeline.build(weekday: 2, lessons: [lesson(1, "08:15", "09:45"), lesson(2, "09:55", "11:25")], day: "2026-09-29", overrides: o)
+        var starts: [Int] = []
+        for x in e { if case let .pair(_, s, _, _, _) = x { starts.append(s) } }
+        XCTAssertEqual(starts, [m("08:00"), m("09:45")])
+        if case let .pause(s, en, _) = e[1] { XCTAssertEqual(en - s, 15) } else { XCTFail() }
+        let mon = Timeline.build(weekday: 1, lessons: monLessons, day: "2026-09-28", overrides: o)
+        XCTAssertEqual(mon[0].start, m("07:50"))
+        XCTAssertEqual(mon[1].start, m("08:20"))
+    }
+
+    func testAdminDayTimesAndToggles() {
+        let o = OverridesData(days: [
+            "2026-09-28": OverrideDay(flag: false, classHour: true),
+            "2026-09-30": OverrideDay(times: [BellTime(2, "10:30", "11:30"), BellTime(3, "25:00", "13:00")]),
+            "2026-10-03": OverrideDay(flag: true),
+        ])
+        let mon = Timeline.build(weekday: 1, lessons: monLessons, day: "2026-09-28", overrides: o)
+        let chs = mon.filter { if case .classHour = $0 { return true }; return false }
+        XCTAssertEqual(chs.map { $0.start }, [m("14:00")])
+        guard case .pair = mon[0] else { return XCTFail("флаг убран — первой идёт пара") }
+        let wed = Timeline.build(weekday: 3, lessons: [lesson(2, "09:55", "11:25"), lesson(3, "12:05", "13:35")], day: "2026-09-30", overrides: o)
+        var starts: [Int] = []
+        for x in wed { if case let .pair(_, s, _, _, _) = x { starts.append(s) } }
+        XCTAssertEqual(starts, [m("10:30"), m("12:05")])
+        let sat = Timeline.build(weekday: 6, lessons: [], day: "2026-10-03", overrides: o)
+        XCTAssertEqual(sat.map { $0.start }, [m("08:00")])
+        XCTAssertNil(Bells.parseHm("8:5"))
+        XCTAssertEqual(Bells.parseHm("8:05"), m("08:05"))
+    }
+
+    func testDecodeBellsFromJson() throws {
+        let json = #"{"bells":{"sat":[{"number":1,"start":"09:00","end":"10:00"}],"classHour":{"start":"13:00","end":"13:30"}},"days":{"2026-10-03":{"pairs":[],"classHour":true}}}"#
+        let o = try JSONDecoder().decode(OverridesData.self, from: Data(json.utf8))
+        XCTAssertEqual(Bells.pairs(weekday: 6, day: nil, overrides: o).first?.start, m("09:00"))
+        XCTAssertEqual(o.day("2026-10-03")?.classHour, true)
+        XCTAssertEqual(Bells.classHour(o).start, m("13:00"))
+    }
 }

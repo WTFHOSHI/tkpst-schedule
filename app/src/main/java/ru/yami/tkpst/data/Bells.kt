@@ -1,6 +1,7 @@
 package ru.yami.tkpst.data
 
 import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 
@@ -52,6 +53,7 @@ object Bells {
         "Классный час «Разговоры о важном»",
     )
 
+    /** Звонки по фото — без изменений из админки (по ним узнаём номер пары в данных колледжа). */
     fun pairs(day: DayOfWeek): List<Slot> = when (day) {
         DayOfWeek.MONDAY -> monday
         DayOfWeek.SATURDAY -> saturday
@@ -59,6 +61,53 @@ object Bells {
         else -> weekdays
     }
 
+    /** Классные часы по фото (для распознавания в данных колледжа). */
     fun classHours(day: DayOfWeek): List<ClassHourSlot> =
         if (day == DayOfWeek.MONDAY) listOf(MORNING_CLASS_HOUR, AFTERNOON_CLASS_HOUR) else emptyList()
+
+    /** «8:05» / «08:05» → время (или null, если неверно). */
+    fun parseHm(s: String?): LocalTime? {
+        val m = Regex("^(\\d{1,2}):(\\d{2})(?::\\d{2})?$").matchEntire(s?.trim().orEmpty()) ?: return null
+        val h = m.groupValues[1].toInt(); val min = m.groupValues[2].toInt()
+        return if (h in 0..23 && min in 0..59) LocalTime.of(h, min) else null
+    }
+
+    private fun read(list: List<BellTime>?): List<Slot> {
+        val out = mutableListOf<Slot>()
+        for (x in list.orEmpty()) {
+            val a = parseHm(x.start) ?: continue
+            val b = parseHm(x.end) ?: continue
+            if (x.number in 1..8 && b > a && out.none { it.number == x.number }) out += Slot(x.number, a, b)
+        }
+        return out.sortedBy { it.number }
+    }
+
+    private fun range(r: BellRange?, def: ClassHourSlot): ClassHourSlot {
+        val a = parseHm(r?.start); val b = parseHm(r?.end)
+        return if (a != null && b != null && b > a) def.copy(start = a, end = b) else def
+    }
+
+    /**
+     * Звонки дня с изменениями из админки: общее «Расписание звонков» (bells)
+     * и время пар на конкретную дату (days[дата].times).
+     */
+    fun pairs(day: DayOfWeek, date: LocalDate?, o: OverridesData): List<Slot> {
+        val global = when (day) {
+            DayOfWeek.MONDAY -> o.bells?.mon
+            DayOfWeek.SATURDAY -> o.bells?.sat
+            DayOfWeek.SUNDAY -> return emptyList()
+            else -> o.bells?.week
+        }
+        var slots = read(global).ifEmpty { pairs(day) }
+        val t = read(date?.let { o.day(it) }?.times)
+        if (t.isNotEmpty()) {
+            val byN = slots.associateBy { it.number }.toMutableMap()
+            for (x in t) byN[x.number] = x
+            slots = byN.values.sortedBy { it.number }
+        }
+        return slots
+    }
+
+    fun flag(o: OverridesData): ClassHourSlot = range(o.bells?.flag, MORNING_CLASS_HOUR)
+    fun classHour(o: OverridesData): ClassHourSlot = range(o.bells?.classHour, AFTERNOON_CLASS_HOUR)
 }

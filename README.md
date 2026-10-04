@@ -44,7 +44,9 @@
 
 - Пары: [OpenScheduleApi](https://github.com/ThisIsHyum/OpenScheduleApi), сервер `https://api.thisishyum.ru/schedule_api/tyumen`
   (тот же, что использует [osa.vstor-tech.ru](https://osa.vstor-tech.ru)). Группа ИС-25-3С — id 196.
-- Время пар и перерывов — официальное «Расписание звонков» (`Bells.kt` / `Bells.swift`), а не время из API.
+- Время пар и перерывов — официальное «Расписание звонков» (`Bells.kt` / `Bells.swift` / `core.js`), а не время из API.
+  Его можно поменять в админ-панели: всё расписание звонков сразу (`bells` в `overrides.json`) или время пар на
+  один день (`days[дата].times`); там же — добавить/убрать поднятие флага и классный час на день (`flag`, `classHour`).
 
 ## Сборка
 

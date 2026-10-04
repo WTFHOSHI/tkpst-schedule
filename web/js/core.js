@@ -60,8 +60,58 @@ const SATURDAY = [slot(1, '08:15', '09:15'), slot(2, '09:25', '10:25'), slot(3, 
 
 export const MORNING_CH = { start: hm('08:00'), end: hm('08:30'), title: 'Поднятие Государственного флага РФ · «Разговоры о важном»' };
 export const AFTERNOON_CH = { start: hm('14:00'), end: hm('14:30'), title: 'Классный час «Разговоры о важном»' };
+const BASE = { mon: MONDAY, week: WEEKDAYS, sat: SATURDAY };
 
-export function pairSlots(wd) { return wd === 1 ? MONDAY : wd === 6 ? SATURDAY : wd === 7 ? [] : WEEKDAYS; }
+/** Какой набор звонков у дня: 'mon' | 'week' (вт–пт) | 'sat' | null (воскресенье). */
+export const bellKind = (wd) => (wd === 1 ? 'mon' : wd === 6 ? 'sat' : wd === 7 ? null : 'week');
+
+/** «8:05» / «08:05» → минуты от начала суток (или null). */
+export function parseHm(s) {
+  const r = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(String(s ?? '').trim());
+  if (!r || +r[1] > 23 || +r[2] > 59) return null;
+  return +r[1] * 60 + +r[2];
+}
+export const hmStr = (min) => pad(Math.floor(min / 60)) + ':' + pad(min % 60);
+
+/** [{number, start: "08:15", end: "09:45"}] → звонки; неверные строки пропускаются. */
+function readSlots(list) {
+  if (!Array.isArray(list)) return null;
+  const out = [];
+  for (const x of list) {
+    const n = Number(x && x.number), a = parseHm(x && x.start), b = parseHm(x && x.end);
+    if (Number.isInteger(n) && n >= 1 && n <= 8 && a != null && b != null && b > a && !out.some((o) => o.number === n)) out.push({ number: n, start: a, end: b });
+  }
+  return out.sort((a, b) => a.number - b.number);
+}
+function readRange(r, def) {
+  const a = parseHm(r && r.start), b = parseHm(r && r.end);
+  return a != null && b != null && b > a ? { ...def, start: a, end: b } : def;
+}
+
+/** Звонки по фото — без изменений из админки (по ним узнаём номер пары в данных колледжа). */
+export function basePairSlots(wd) { const k = bellKind(wd); return k ? BASE[k] : []; }
+
+/**
+ * Звонки дня с изменениями из админки: общее «Расписание звонков» (bells.mon/week/sat)
+ * и время пар на конкретную дату (days[дата].times — только изменённые пары).
+ */
+export function pairSlots(wd, isoDate = null) {
+  const k = bellKind(wd);
+  if (!k) return [];
+  const g = readSlots(OVERRIDES.bells && OVERRIDES.bells[k]);
+  let slots = g && g.length ? g : BASE[k];
+  const t = readSlots((dayOverride(isoDate) || {}).times);
+  if (t && t.length) {
+    const byN = new Map(slots.map((s) => [s.number, s]));
+    for (const x of t) byN.set(x.number, x);
+    slots = [...byN.values()].sort((a, b) => a.number - b.number);
+  }
+  return slots;
+}
+/** Поднятие флага и классный час — время с учётом общего расписания звонков. */
+export const flagSlot = () => readRange(OVERRIDES.bells && OVERRIDES.bells.flag, MORNING_CH);
+export const classHourSlot = () => readRange(OVERRIDES.bells && OVERRIDES.bells.classHour, AFTERNOON_CH);
+/** Классные часы по фото (для распознавания в данных колледжа). */
 export function classHourSlots(wd) { return wd === 1 ? [MORNING_CH, AFTERNOON_CH] : []; }
 
 // ---------------- Лента дня ----------------
@@ -87,8 +137,13 @@ function info(l) {
 
 // ---------------- Изменения от админа (overrides.json) ----------------
 // Формат:
-// { announcement, updatedAt, days: { "2026-09-30": { note, replaceAll, pairs: [
-//     { number: 2, status: "remote" | "cancelled" | "normal", title?, cabinet?, teacher? } ] } } }
+// { announcement, updatedAt,
+//   bells?: { mon?, week?, sat?: [{ number, start: "08:30", end: "10:00" }],   // общее расписание звонков
+//             flag?: { start, end }, classHour?: { start, end } },              // поднятие флага, классный час
+//   days: { "2026-09-30": { note, replaceAll, pairs: [
+//     { number: 2, status: "remote" | "cancelled" | "normal", title?, cabinet?, teacher? } ],
+//     times?: [{ number, start, end }],          // время пар только на этот день
+//     flag?: true | false, classHour?: true | false } } }   // есть / нет; нет поля — как обычно
 // status remote — дистант, cancelled — пара отменена; title/cabinet/teacher — замена (или новая пара);
 // replaceAll — своё расписание на день, данные колледжа не используются.
 
@@ -111,17 +166,23 @@ function applyReplace(li, p) {
 }
 
 /**
- * Лента дня: пары (время по звонкам с фото), классные часы понедельника, перерывы/окна.
- * Элементы: {type:'pair'|'ch'|'break', start, end, ...} (минуты от начала суток).
+ * Лента дня: пары (время — по звонкам, с изменениями из админки), поднятие флага и классный час, перерывы/окна.
+ * Элементы: {type:'pair'|'ch'|'break', start, end, ...} (минуты от начала суток). У 'ch' есть kind: 'flag' | 'ch'.
  * isoDate — дата «YYYY-MM-DD», чтобы применить изменения админа.
  */
 export function buildTimeline(wd, lessons, isoDate = null) {
   const ov = dayOverride(isoDate);
   if (wd === 7) return [];
   const src = ov && ov.replaceAll ? [] : (lessons || []);
-  if (!src.length && !(ov && (ov.pairs || []).length)) return [];
-  const slots = pairSlots(wd), chs = classHourSlots(wd);
-  const classHours = new Map();
+  const forced = !!ov && (ov.flag === true || ov.classHour === true);
+  if (!src.length && !(ov && (ov.pairs || []).length) && !forced) return [];
+  const base = basePairSlots(wd), slots = pairSlots(wd, isoDate), chs = classHourSlots(wd);
+  const FLAG = flagSlot(), CH = classHourSlot();
+  const chEntry = (kind, title, cabinet = '') => {
+    const s = kind === 'flag' ? FLAG : CH;
+    return { type: 'ch', kind, start: s.start, end: s.end, title: title || s.title, cabinet };
+  };
+  const classHours = new Map(); // 'flag' | 'ch' → элемент
   const pairs = new Map();
   const custom = new Map();
   const status = new Map();
@@ -132,13 +193,15 @@ export function buildTimeline(wd, lessons, isoDate = null) {
     const chSlot = chs.find((s) => s.start === st);
     if (chSlot || isCH(l.title)) {
       const s = chSlot || (st == null ? chs[0] : [...chs].sort((a, b) => Math.abs(a.start - st) - Math.abs(b.start - st))[0]);
-      const start = s ? s.start : st;
-      if (start == null) continue;
-      const end = s ? s.end : (parseTime(l.endTime) ?? start + 30);
-      classHours.set(start, { type: 'ch', start, end, title: clean(l.title) || (s ? s.title : 'Классный час'), cabinet: clean(l.cabinet) });
+      const at = s ? s.start : st;
+      if (at == null) continue;
+      const kind = at < 12 * 60 ? 'flag' : 'ch';
+      if (s) classHours.set(kind, chEntry(kind, clean(l.title), clean(l.cabinet)));
+      else classHours.set(kind, { type: 'ch', kind, start: st, end: parseTime(l.endTime) ?? st + 30, title: clean(l.title) || 'Классный час', cabinet: clean(l.cabinet) });
       continue;
     }
-    const byTime = slots.find((s) => s.start === st);
+    // Номер пары узнаём по звонкам с фото (колледж отдаёт их время), показываем — по текущим звонкам.
+    const byTime = base.find((s) => s.start === st);
     const number = byTime ? byTime.number : (mondayShift ? l.order - 1 : l.order);
     if (!(number > 0)) continue;
     if (!slots.some((s) => s.number === number)) {
@@ -162,17 +225,21 @@ export function buildTimeline(wd, lessons, isoDate = null) {
       if (p.status === 'remote' || p.status === 'cancelled') status.set(n, p.status);
     }
   }
-  if (!pairs.size && !classHours.size) return [];
 
+  // Понедельник: флаг — если есть пары первой смены, классный час — если есть пары после 14:00.
   if (wd === 1 && pairs.size > 0) {
     const nums = [...pairs.keys()];
-    if (!classHours.has(MORNING_CH.start) && nums.some((n) => n <= 3)) {
-      classHours.set(MORNING_CH.start, { type: 'ch', start: MORNING_CH.start, end: MORNING_CH.end, title: MORNING_CH.title, cabinet: '' });
-    }
-    if (!classHours.has(AFTERNOON_CH.start) && nums.some((n) => n >= 4)) {
-      classHours.set(AFTERNOON_CH.start, { type: 'ch', start: AFTERNOON_CH.start, end: AFTERNOON_CH.end, title: AFTERNOON_CH.title, cabinet: '' });
+    if (!classHours.has('flag') && nums.some((n) => n <= 3)) classHours.set('flag', chEntry('flag'));
+    if (!classHours.has('ch') && nums.some((n) => n >= 4)) classHours.set('ch', chEntry('ch'));
+  }
+  // Админ: добавить / убрать поднятие флага и классный час на этот день
+  if (ov) {
+    for (const [kind, v] of [['flag', ov.flag], ['ch', ov.classHour]]) {
+      if (v === false) classHours.delete(kind);
+      else if (v === true && !classHours.has(kind)) classHours.set(kind, chEntry(kind));
     }
   }
+  if (!pairs.size && !classHours.size) return [];
 
   const main = [...classHours.values()];
   for (const [n, lessonsInfo] of pairs) {

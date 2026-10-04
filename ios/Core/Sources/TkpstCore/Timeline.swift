@@ -96,17 +96,25 @@ public enum Timeline {
         )
     }
 
-    /// day — «YYYY-MM-DD», чтобы применить изменения из админ-панели.
+    /// day — «YYYY-MM-DD», чтобы применить изменения из админ-панели (пары, время звонков, флаг, классный час).
     public static func build(weekday: Int, lessons apiLessons: [ApiLesson], day: String? = nil,
                              overrides: OverridesData? = nil) -> [Entry] {
         if weekday == 7 { return [] }
         let ov = overrides?.day(day)
         let lessons = ov?.replaceAll == true ? [] : apiLessons
-        if lessons.isEmpty && (ov?.pairs.isEmpty ?? true) { return [] }
-        let pairSlots = Bells.pairs(weekday: weekday)
+        let forced = ov?.flag == true || ov?.classHour == true
+        if lessons.isEmpty && (ov?.pairs.isEmpty ?? true) && !forced { return [] }
+        let baseSlots = Bells.pairs(weekday: weekday)
+        let pairSlots = Bells.pairs(weekday: weekday, day: day, overrides: overrides)
         let chSlots = Bells.classHours(weekday: weekday)
+        let flagSlot = Bells.flag(overrides), chSlot = Bells.classHour(overrides)
+        func chEntry(_ isFlag: Bool, _ title: String = "", _ cabinet: String = "") -> Entry {
+            let s = isFlag ? flagSlot : chSlot
+            return .classHour(start: s.start, end: s.end, title: title.isEmpty ? s.defaultTitle : title, cabinet: cabinet)
+        }
 
-        var classHours: [Int: Entry] = [:]
+        // Ключ: true — поднятие флага (утро), false — классный час (после обеда).
+        var classHours: [Bool: Entry] = [:]
         var pairs: [Int: [LessonInfo]] = [:]
         var custom: [Int: (Int, Int)] = [:]
 
@@ -117,19 +125,24 @@ public enum Timeline {
 
         for l in lessons {
             let st = parseTime(l.startTime)
-            let chSlot = chSlots.first { $0.start == st }
-            if chSlot != nil || isClassHourTitle(l.title) {
-                let slot = chSlot ?? chSlots.min { a, b in
+            let exact = chSlots.first { $0.start == st }
+            if exact != nil || isClassHourTitle(l.title) {
+                let slot = exact ?? chSlots.min { a, b in
                     guard let st else { return false }
                     return abs(a.start - st) < abs(b.start - st)
                 }
-                guard let start = slot?.start ?? st else { continue }
-                let end = slot?.end ?? parseTime(l.endTime) ?? start + 30
-                let title = clean(l.title).isEmpty ? (slot?.defaultTitle ?? "Классный час") : clean(l.title)
-                classHours[start] = .classHour(start: start, end: end, title: title, cabinet: clean(l.cabinet))
+                guard let at = slot?.start ?? st else { continue }
+                let isFlag = at < 12 * 60
+                if slot != nil {
+                    classHours[isFlag] = chEntry(isFlag, clean(l.title), clean(l.cabinet))
+                } else {
+                    let title = clean(l.title).isEmpty ? "Классный час" : clean(l.title)
+                    classHours[isFlag] = .classHour(start: at, end: parseTime(l.endTime) ?? at + 30, title: title, cabinet: clean(l.cabinet))
+                }
                 continue
             }
-            let number = pairSlots.first { $0.start == st }?.number ?? (mondayShift ? l.order - 1 : l.order)
+            // Номер пары узнаём по звонкам с фото (колледж отдаёт их время), показываем — по текущим звонкам.
+            let number = baseSlots.first { $0.start == st }?.number ?? (mondayShift ? l.order - 1 : l.order)
             if number <= 0 { continue }
             if !pairSlots.contains(where: { $0.number == number }) {
                 guard let a = st else { continue }
@@ -151,18 +164,18 @@ public enum Timeline {
             if p.status == "remote" { status[n] = .remote }
             if p.status == "cancelled" { status[n] = .cancelled }
         }
-        if pairs.isEmpty && classHours.isEmpty { return [] }
 
-        // Классные часы понедельника показываем, даже если API их не прислал.
+        // Понедельник: флаг — если есть пары первой смены, классный час — если есть пары после 14:00.
         if weekday == 1 && !pairs.isEmpty {
-            let m = Bells.morningClassHour, a = Bells.afternoonClassHour
-            if classHours[m.start] == nil && pairs.keys.contains(where: { $0 <= 3 }) {
-                classHours[m.start] = .classHour(start: m.start, end: m.end, title: m.defaultTitle, cabinet: "")
-            }
-            if classHours[a.start] == nil && pairs.keys.contains(where: { $0 >= 4 }) {
-                classHours[a.start] = .classHour(start: a.start, end: a.end, title: a.defaultTitle, cabinet: "")
-            }
+            if classHours[true] == nil && pairs.keys.contains(where: { $0 <= 3 }) { classHours[true] = chEntry(true) }
+            if classHours[false] == nil && pairs.keys.contains(where: { $0 >= 4 }) { classHours[false] = chEntry(false) }
         }
+        // Админ: добавить / убрать поднятие флага и классный час на этот день
+        for (isFlag, v) in [(true, ov?.flag), (false, ov?.classHour)] {
+            if v == false { classHours[isFlag] = nil }
+            else if v == true && classHours[isFlag] == nil { classHours[isFlag] = chEntry(isFlag) }
+        }
+        if pairs.isEmpty && classHours.isEmpty { return [] }
 
         var main: [Entry] = Array(classHours.values)
         for (n, infos) in pairs {

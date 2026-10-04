@@ -1,7 +1,7 @@
 // Тесты логики сайта: node --test web/test
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { T, buildTimeline, formatLeft, parseLessons, Network, findPlans, schedulePlan, rankJourneys, arriveBy } from '../js/core.js';
+import { T, buildTimeline, setOverrides, pairSlots, flagSlot, formatLeft, parseLessons, Network, findPlans, schedulePlan, rankJourneys, arriveBy } from '../js/core.js';
 
 const L = (order, s, e, title = `Предмет ${order}`, replace) =>
   ({ title, cabinet: '101', teacher: 'Иванов И.И.', order, startTime: s + ':00', endTime: e + ':00', replace });
@@ -169,4 +169,58 @@ test('изменения админа: дистант, отмена, замен�
   // replaceAll игнорирует данные колледжа
   assert.equal(buildTimeline(4, [L(3, '12:05', '13:35')], '2026-10-01').filter((x) => x.type === 'pair').length, 1);
   setOverrides(null);
+});
+
+const MON = [
+  { title: 'Классный час "Разговоры о важном"', order: 1, startTime: '08:00:00', endTime: '08:30:00' },
+  { title: 'История', order: 2, startTime: '08:30:00', endTime: '10:00:00' },
+  { title: 'Физра', order: 3, startTime: '10:10:00', endTime: '11:40:00' },
+];
+
+test('админ: общее расписание звонков меняет время пар и перерывы', () => {
+  setOverrides({ bells: {
+    week: [{ number: 1, start: '08:00', end: '09:30' }, { number: 2, start: '09:45', end: '11:15' }, { number: 3, start: '12:00', end: '13:30' },
+      { number: 4, start: '13:40', end: '15:10' }, { number: 5, start: '15:20', end: '16:50' }, { number: 6, start: '17:00', end: '18:30' }],
+    flag: { start: '07:50', end: '08:20' }, classHour: { start: '13:55', end: '14:25' },
+  }, days: {} });
+  // колледж прислал старое время (по фото) — номер пары узнаём по нему, время показываем новое
+  const e = buildTimeline(2, [L(1, '08:15', '09:45'), L(2, '09:55', '11:25')], '2026-09-29');
+  assert.deepEqual(e.filter((x) => x.type === 'pair').map((x) => [x.number, x.start, x.end]), [[1, m('08:00'), m('09:30')], [2, m('09:45'), m('11:15')]]);
+  assert.equal(e[1].end - e[1].start, 15);
+  // понедельник по фото не трогали; флаг — по новому времени
+  const mon = buildTimeline(1, MON, '2026-09-28');
+  assert.equal(mon[0].kind, 'flag');
+  assert.deepEqual([mon[0].start, mon[0].end], [m('07:50'), m('08:20')]);
+  assert.equal(mon.find((x) => x.number === 1).start, m('08:30'));
+  assert.equal(flagSlot().start, m('07:50'));
+  setOverrides(null);
+});
+
+test('админ: время пар на один день, неверное время пропускается', () => {
+  setOverrides({ days: { '2026-09-30': { times: [{ number: 2, start: '10:30', end: '11:30' }, { number: 3, start: '25:00', end: '13:00' }], pairs: [] } } });
+  assert.equal(pairSlots(3, '2026-09-30').find((s) => s.number === 2).start, m('10:30'));
+  assert.equal(pairSlots(3, '2026-09-30').find((s) => s.number === 3).start, m('12:05'));
+  assert.equal(pairSlots(3, '2026-10-01').find((s) => s.number === 2).start, m('09:55'));
+  const e = buildTimeline(3, [L(2, '09:55', '11:25'), L(3, '12:05', '13:35')], '2026-09-30');
+  assert.deepEqual(e.map((x) => x.type === 'pair' ? x.start : x.end - x.start), [m('10:30'), 35, m('12:05')]);
+  setOverrides(null);
+});
+
+test('админ: убрать / добавить поднятие флага и классный час', () => {
+  setOverrides({ days: {
+    '2026-09-28': { flag: false, classHour: true, pairs: [] },
+    '2026-09-29': { classHour: true, pairs: [] },
+    '2026-10-03': { flag: true, pairs: [] },
+  } });
+  const mon = buildTimeline(1, MON, '2026-09-28');
+  const chs = mon.filter((x) => x.type === 'ch');
+  assert.deepEqual(chs.map((x) => [x.kind, x.start]), [['ch', m('14:00')]]);
+  assert.equal(mon[0].type, 'pair');
+  const tue = buildTimeline(2, [L(1, '08:15', '09:45')], '2026-09-29');
+  assert.equal(tue.at(-1).type, 'ch');
+  assert.equal(tue.at(-1).title, 'Классный час «Разговоры о важном»');
+  // день без пар, но флаг добавлен
+  assert.deepEqual(buildTimeline(6, [], '2026-10-03').map((x) => x.kind), ['flag']);
+  setOverrides(null);
+  assert.equal(buildTimeline(1, MON, '2026-09-28')[0].kind, 'flag');
 });

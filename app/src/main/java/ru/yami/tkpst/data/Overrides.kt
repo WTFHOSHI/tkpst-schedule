@@ -24,18 +24,51 @@ data class OverridePair(
     val teacher: String? = null,
 )
 
+/** Время пары из админки: «08:30»–«10:00». */
+@Serializable
+data class BellTime(
+    val number: Int = 0,
+    val start: String? = null,
+    val end: String? = null,
+)
+
+@Serializable
+data class BellRange(
+    val start: String? = null,
+    val end: String? = null,
+)
+
+/** Общее «Расписание звонков» из админки — заменяет звонки с фото. */
+@Serializable
+data class BellsData(
+    val mon: List<BellTime>? = null,
+    /** Вторник–пятница. */
+    val week: List<BellTime>? = null,
+    val sat: List<BellTime>? = null,
+    /** Поднятие флага. */
+    val flag: BellRange? = null,
+    val classHour: BellRange? = null,
+)
+
 @Serializable
 data class OverrideDay(
     val note: String? = null,
     /** Своё расписание на день: пары колледжа не используются. */
     val replaceAll: Boolean = false,
     val pairs: List<OverridePair> = emptyList(),
+    /** Время пар только на этот день (только изменённые пары). */
+    val times: List<BellTime> = emptyList(),
+    /** Поднятие флага: true — есть, false — нет, null — как обычно. */
+    val flag: Boolean? = null,
+    /** Классный час: true — есть, false — нет, null — как обычно. */
+    val classHour: Boolean? = null,
 )
 
 @Serializable
 data class OverridesData(
     val announcement: String? = null,
     val updatedAt: String? = null,
+    val bells: BellsData? = null,
     val days: Map<String, OverrideDay> = emptyMap(),
 ) {
     fun day(date: LocalDate): OverrideDay? = days[date.toString()]

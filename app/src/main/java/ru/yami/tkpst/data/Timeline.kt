@@ -102,22 +102,32 @@ object Timeline {
     }
 
     /**
-     * Строит ленту дня: пары (время — по звонкам с фото), классные часы понедельника
-     * и перерывы/окна между ними.
+     * Строит ленту дня: пары (время — по звонкам, с изменениями из админки), поднятие флага,
+     * классный час и перерывы/окна между ними.
      */
     fun build(date: LocalDate, apiLessons: List<ApiLesson>, overrides: OverridesData = Overrides.current): List<Entry> {
         val dow = date.dayOfWeek
         if (dow == DayOfWeek.SUNDAY) return emptyList()
         val ov = overrides.day(date)
         val lessons = if (ov?.replaceAll == true) emptyList() else apiLessons
-        if (lessons.isEmpty() && ov?.pairs.isNullOrEmpty()) return emptyList()
+        val forced = ov?.flag == true || ov?.classHour == true
+        if (lessons.isEmpty() && ov?.pairs.isNullOrEmpty() && !forced) return emptyList()
 
-        val pairSlots = Bells.pairs(dow)
+        val baseSlots = Bells.pairs(dow)
+        val pairSlots = Bells.pairs(dow, date, overrides)
         val chSlots = Bells.classHours(dow)
+        val flagSlot = Bells.flag(overrides)
+        val chSlot = Bells.classHour(overrides)
+        fun chEntry(flag: Boolean, title: String = "", cabinet: String = ""): Entry.ClassHour {
+            val s = if (flag) flagSlot else chSlot
+            return Entry.ClassHour(s.start, s.end, title.ifEmpty { s.defaultTitle }, cabinet)
+        }
 
-        val classHours = mutableMapOf<LocalTime, Entry.ClassHour>()
+        // Ключ: true — поднятие флага (утро), false — классный час (после обеда).
+        val classHours = mutableMapOf<Boolean, Entry.ClassHour>()
         val pairs = sortedMapOf<Int, MutableList<LessonInfo>>()
         val customTimes = mutableMapOf<Int, kotlin.Pair<LocalTime, LocalTime>>()
+        val noon = LocalTime.of(12, 0)
 
         // В понедельник API считает классный час 8:00 «первой парой» — номера сдвинуты.
         val mondayShift = dow == DayOfWeek.MONDAY && lessons.any {
@@ -126,22 +136,20 @@ object Timeline {
 
         for (l in lessons) {
             val st = parseTime(l.startTime)
-            val chSlot = chSlots.firstOrNull { it.start == st }
-            if (chSlot != null || isClassHourTitle(l.title)) {
-                val slot = chSlot ?: chSlots.minByOrNull { s ->
+            val exact = chSlots.firstOrNull { it.start == st }
+            if (exact != null || isClassHourTitle(l.title)) {
+                val slot = exact ?: chSlots.minByOrNull { s ->
                     if (st == null) Long.MAX_VALUE else abs(Duration.between(s.start, st).toMinutes())
                 }
-                val start = slot?.start ?: st ?: continue
-                val end = slot?.end ?: parseTime(l.endTime) ?: start.plusMinutes(30)
-                classHours[start] = Entry.ClassHour(
-                    start, end,
-                    title = clean(l.title).ifEmpty { slot?.defaultTitle ?: "Классный час" },
-                    cabinet = clean(l.cabinet),
-                )
+                val at = slot?.start ?: st ?: continue
+                val isFlag = at < noon
+                classHours[isFlag] = if (slot != null) chEntry(isFlag, clean(l.title), clean(l.cabinet))
+                else Entry.ClassHour(at, parseTime(l.endTime) ?: at.plusMinutes(30), clean(l.title).ifEmpty { "Классный час" }, clean(l.cabinet))
                 continue
             }
 
-            val number = pairSlots.firstOrNull { it.start == st }?.number
+            // Номер пары узнаём по звонкам с фото (колледж отдаёт их время), показываем — по текущим звонкам.
+            val number = baseSlots.firstOrNull { it.start == st }?.number
                 ?: (if (mondayShift) l.order - 1 else l.order)
             if (number <= 0) continue
             if (pairSlots.none { it.number == number }) {
@@ -165,20 +173,18 @@ object Timeline {
             }
             if (p.status == "remote" || p.status == "cancelled") status[n] = p.status
         }
-        if (pairs.isEmpty() && classHours.isEmpty()) return emptyList()
 
-        // Классные часы понедельника показываем, даже если API их не прислал:
-        // утренний — если есть пары первой смены, дневной — если есть пары после 14:00.
+        // Понедельник: флаг — если есть пары первой смены, классный час — если есть пары после 14:00.
         if (dow == DayOfWeek.MONDAY && pairs.isNotEmpty()) {
-            val m = Bells.MORNING_CLASS_HOUR
-            val a = Bells.AFTERNOON_CLASS_HOUR
-            if (m.start !in classHours && pairs.keys.any { it <= 3 }) {
-                classHours[m.start] = Entry.ClassHour(m.start, m.end, m.defaultTitle, "")
-            }
-            if (a.start !in classHours && pairs.keys.any { it >= 4 }) {
-                classHours[a.start] = Entry.ClassHour(a.start, a.end, a.defaultTitle, "")
-            }
+            if (true !in classHours && pairs.keys.any { it <= 3 }) classHours[true] = chEntry(true)
+            if (false !in classHours && pairs.keys.any { it >= 4 }) classHours[false] = chEntry(false)
         }
+        // Админ: добавить / убрать поднятие флага и классный час на этот день
+        for ((isFlag, v) in listOf(true to ov?.flag, false to ov?.classHour)) {
+            if (v == false) classHours.remove(isFlag)
+            else if (v == true && isFlag !in classHours) classHours[isFlag] = chEntry(isFlag)
+        }
+        if (pairs.isEmpty() && classHours.isEmpty()) return emptyList()
 
         val main = buildList<Entry> {
             addAll(classHours.values)
