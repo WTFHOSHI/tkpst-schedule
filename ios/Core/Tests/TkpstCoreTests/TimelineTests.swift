@@ -53,8 +53,8 @@ final class TimelineTests: XCTestCase {
     func testTimesFromBells() {
         let e = Timeline.build(weekday: 3, lessons: [ApiLesson(title: "X", order: 3, startTime: "12:00:00", endTime: "13:30:00")])
         XCTAssertEqual(e.count, 1)
-        XCTAssertEqual(e[0].start, m("12:05"))
-        XCTAssertEqual(e[0].end, m("13:35"))
+        XCTAssertEqual(e[0].start, m("12:20"))
+        XCTAssertEqual(e[0].end, m("13:50"))
     }
 
     func testSundayEmpty() {
@@ -153,7 +153,7 @@ final class TimelineTests: XCTestCase {
         let wed = Timeline.build(weekday: 3, lessons: [lesson(2, "09:55", "11:25"), lesson(3, "12:05", "13:35")], day: "2026-09-30", overrides: o)
         var starts: [Int] = []
         for x in wed { if case let .pair(_, s, _, _, _) = x { starts.append(s) } }
-        XCTAssertEqual(starts, [m("10:30"), m("12:05")])
+        XCTAssertEqual(starts, [m("10:30"), m("12:20")])
         let sat = Timeline.build(weekday: 6, lessons: [], day: "2026-10-03", overrides: o)
         XCTAssertEqual(sat.map { $0.start }, [m("08:00")])
         XCTAssertNil(Bells.parseHm("8:5"))

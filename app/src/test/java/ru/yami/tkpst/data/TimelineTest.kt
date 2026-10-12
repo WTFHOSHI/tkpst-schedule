@@ -71,8 +71,8 @@ class TimelineTest {
     fun timesAlwaysFromBells_evenIfApiDiffers() {
         val lessons = listOf(ApiLesson("X", "1", "Y", 3, "12:00:00", "13:30:00"))
         val p = Timeline.build(LocalDate.of(2026, 9, 30), lessons).single() as Entry.Pair
-        assertEquals(t("12:05"), p.start)
-        assertEquals(t("13:35"), p.end)
+        assertEquals(t("12:20"), p.start)
+        assertEquals(t("13:50"), p.end)
     }
 
     @Test
@@ -135,7 +135,7 @@ class TimelineTest {
         assertEquals("Интерфейсы", p.getValue(4).lessons[0].oldTitle)
         assertEquals("501", p.getValue(4).lessons[0].cabinet)
         assertTrue(p.getValue(5).lessons[0].added)
-        assertEquals(t("15:40"), p.getValue(5).start)
+        assertEquals(t("15:55"), p.getValue(5).start)
         assertEquals(listOf(4, 5), e.filter { it.isInPerson() }.map { (it as Entry.Pair).number })
         // в другой день изменений нет
         assertTrue(Timeline.build(LocalDate.of(2026, 10, 7), wed, ov).filterIsInstance<Entry.Pair>().none { it.remote || it.cancelled })
@@ -178,7 +178,7 @@ class TimelineTest {
         assertEquals(listOf(t("14:00")), m.filterIsInstance<Entry.ClassHour>().map { it.start })
         assertTrue(m[0] is Entry.Pair)
         val w = Timeline.build(LocalDate.of(2026, 9, 30), listOf(lesson(2, "09:55", "11:25"), lesson(3, "12:05", "13:35")), o)
-        assertEquals(listOf(t("10:30"), t("12:05")), w.filterIsInstance<Entry.Pair>().map { it.start })
+        assertEquals(listOf(t("10:30"), t("12:20")), w.filterIsInstance<Entry.Pair>().map { it.start })
         val sat = Timeline.build(LocalDate.of(2026, 10, 3), emptyList(), o)
         assertEquals(listOf(t("08:00")), sat.map { it.start })
         assertTrue(sat[0] is Entry.ClassHour)

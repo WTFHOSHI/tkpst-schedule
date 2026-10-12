@@ -34,8 +34,8 @@ test('вторник: перерыв, окно, большой перерыв', 
 
 test('время пар — из звонков, а не из API', () => {
   const e = buildTimeline(3, [{ title: 'X', order: 3, startTime: '12:00:00', endTime: '13:30:00' }]);
-  assert.equal(e[0].start, m('12:05'));
-  assert.equal(e[0].end, m('13:35'));
+  assert.equal(e[0].start, m('12:20'));
+  assert.equal(e[0].end, m('13:50'));
 });
 
 test('воскресенье, замены, формат', () => {
@@ -158,7 +158,7 @@ test('изменения админа: дистант, отмена, замен�
   assert.equal(p(4).lessons[0].oldTitle, 'Интерфейсы');
   assert.equal(p(4).lessons[0].replaced, true);
   assert.equal(p(5).lessons[0].title, 'Новая пара');
-  assert.equal(p(5).start, 15 * 60 + 40);
+  assert.equal(p(5).start, 15 * 60 + 55);
   assert.deepEqual(e.filter(isInPerson).map((x) => x.number), [4, 5]);
   // в другой день изменений нет
   assert.equal(buildTimeline(3, wed, '2026-10-07').filter((x) => x.remote || x.cancelled).length, 0);
@@ -199,10 +199,10 @@ test('админ: общее расписание звонков меняет в
 test('админ: время пар на один день, неверное время пропускается', () => {
   setOverrides({ days: { '2026-09-30': { times: [{ number: 2, start: '10:30', end: '11:30' }, { number: 3, start: '25:00', end: '13:00' }], pairs: [] } } });
   assert.equal(pairSlots(3, '2026-09-30').find((s) => s.number === 2).start, m('10:30'));
-  assert.equal(pairSlots(3, '2026-09-30').find((s) => s.number === 3).start, m('12:05'));
-  assert.equal(pairSlots(3, '2026-10-01').find((s) => s.number === 2).start, m('09:55'));
+  assert.equal(pairSlots(3, '2026-09-30').find((s) => s.number === 3).start, m('12:20'));
+  assert.equal(pairSlots(3, '2026-10-01').find((s) => s.number === 2).start, m('10:10'));
   const e = buildTimeline(3, [L(2, '09:55', '11:25'), L(3, '12:05', '13:35')], '2026-09-30');
-  assert.deepEqual(e.map((x) => x.type === 'pair' ? x.start : x.end - x.start), [m('10:30'), 35, m('12:05')]);
+  assert.deepEqual(e.map((x) => x.type === 'pair' ? x.start : x.end - x.start), [m('10:30'), 50, m('12:20')]);
   setOverrides(null);
 });
 
