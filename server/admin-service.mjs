@@ -38,6 +38,7 @@ export function validateRoster(config) {
     for (const s of c.students) {
       if (!s || typeof s.id !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(s.id) || typeof s.name !== 'string' || s.name.trim().length < 2 || s.name.length > 120 || /[\u0000-\u001f\u007f]/.test(s.name) || !validDate(s.from) || !validDate(s.to) || seen.has(course + ':' + s.id)) throw new Error('Invalid student');
       seen.add(course + ':' + s.id);
+      if (s.deleted === true) continue;
       students.push({ course, id: s.id, name: s.name.trim(), groupName: c.groupName, ...(s.from ? { from: s.from } : {}), ...(s.to ? { to: s.to } : {}) });
     }
   }
@@ -112,6 +113,11 @@ export function createAdminService({ store, fetchImpl = fetch, now = Date.now })
         if (error.code === '23505' || error.errcode === 2067 || error.code === 'SQLITE_CONSTRAINT_UNIQUE') throw new HttpError(409, 'Этот студент уже связан с другим аккаунтом. Сначала снимите прежнюю привязку.');
         throw error;
       }
+      return { ok: true };
+    },
+    async deleteUser(body) {
+      if (typeof body?.userId !== 'string' || !body.userId || body.userId.length > 80 || typeof body.confirmUsername !== 'string' || !/^[a-z0-9][a-z0-9_.-]{2,31}$/.test(body.confirmUsername)) throw new HttpError(400, 'Введите точный логин аккаунта для подтверждения удаления.');
+      if (!await store.deleteRegisteredUser(body.userId, body.confirmUsername)) throw new HttpError(404, 'Аккаунт не найден или логин для подтверждения не совпадает. Обновите список.');
       return { ok: true };
     },
     logout: token => store.deleteAdminSession(hash(token)),

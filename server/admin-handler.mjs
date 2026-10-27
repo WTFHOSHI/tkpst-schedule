@@ -31,6 +31,7 @@ export function createAdminHandler({ admin, accounts, publicOrigin, now = Date.n
       if (path === '/api/admin/sync') { json(res, 200, await admin.sync(body, token)); return; }
       if (path === '/api/admin/users') { json(res, 200, await admin.users(body)); return; }
       if (path === '/api/admin/link') { json(res, 200, await admin.link(body)); return; }
+      if (path === '/api/admin/delete-user') { json(res, 200, await admin.deleteUser(body)); return; }
       if (path === '/api/admin/logout') { await admin.logout(token); json(res, 204); return; }
       throw new HttpError(404, 'Адрес API не найден.');
     } catch (error) {
