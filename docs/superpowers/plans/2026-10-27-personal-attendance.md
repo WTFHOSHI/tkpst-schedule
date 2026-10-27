@@ -29,7 +29,7 @@
 - [x] Backend: server attendance schema/store, role authentication, ordered snapshot validation, private student read and HTTP tests. Owns server/ only. SQLite and PGlite verify isolation, stale snapshots, replay, hiding, clearing and withdrawal.
 - [x] Student UI: web attendance model/view and current app integration; auth-client attendance request with stale401 protection; default month/navigation, counts/reasons/date/pair journal, unlinked/loading/empty/error states. Owns web/ only, preserves grades demo and honest not-connected grade state. Add all public modules to SW shell and no private caching.
 - [x] Admin bridge: isolated admin checkout; separate attendance client, scoped writer credential in existing session, background role login exchange, automatic sync after source saves/loads and explicit historical course sync button. It must read after reserving a ticket, discard work after logout/role change, and retry failed sync without resaving source marks.
-- [ ] Integrate: full app/admin tests, source review, idempotent additive production migration, deploy both existing Render services and GitHub Pages, browser synthetic checks in light/dark and320/390/desktop. Real initial sync needs a signed-in authorized admin; do not retrieve their passwords or browser secrets.
+- [x] Integrate: full app/admin tests, source review, idempotent additive production migration, deploy both existing Render services and GitHub Pages, browser synthetic checks in light/dark and320/390/desktop. Real initial sync needs a signed-in authorized admin; do not retrieve their passwords or browser secrets.
 
 ## Ledger
 - Read source: encrypted private GitHub attendance weeks are authoritative; the server currently stores only directory links. Admin source saves may be performed by all three vault roles.
@@ -42,3 +42,8 @@
 - Additive production migration succeeded. Both Render services are live on 2881c04 (deploys dep-dbgdll2vcj2c73edrbtg and dep-dbgdllgu01pc73fk9c50). GitHub Pages deployments passed in both repositories. Live HTTP checks: app/modules200, API health200, anonymous private APIs401/no-store.
 - Public Git URL services required manual deployments; neither had an automatic deployment after push. Existing free plans preserved.
 - First authorized real history sync remains a user login action. Production admin browser showed its login form, so no credentials or source keys were extracted. User was given the attendance sync and personal performance links. No real attendance visibility claim was made before this initial sync.
+
+## Production follow-up
+- User reported 13 rejected historical weeks. Browser network evidence showed authorized start200 then sync400; the legacy source had m/pairs/at/by but no hide field. Added a regression that failed on both SQLite and Postgres, then accepted only absent hide as an empty map while continuing to reject malformed provided fields.
+- Fix 02f0e62 passed all66 tests and scoped review. Both Render services are live on that commit (dep-dbgdo2qjnfac73a0fehg / dep-dbgdo3ajnfac73a0ffn0).
+- Using the user's already authenticated admin tab and the normal Update LK control, all18 weeks synced successfully. No source marks were edited. Refreshed the user's own real LK: October2026 shows19 attended pairs,4 application absences,0 unexcused, latest transmission22:16 Tyumen. Initial real sync is now complete. Browser temporary emulation overrides cleared.
