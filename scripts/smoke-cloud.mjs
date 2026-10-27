@@ -27,6 +27,6 @@ try {
   assert.equal((await call('auth/login',{username,password})).data.user.id,id);
   assert.equal((await call('auth/logout')).status,204);
   const get=await fetch(origin+'/api/auth/session'); assert.equal(get.status,405);
-  for(const path of ['/server/.data/accounts.sqlite','/.env.cloud','/server/accounts.mjs']) assert.equal((await fetch(origin+path)).status,404);
+  for(const path of ['/server/.data/accounts.sqlite','/.env.cloud','/server/accounts.mjs']) assert.ok([403,404].includes((await fetch(origin+path)).status), 'Private files must be forbidden or absent: '+path);
   console.log('Cloud smoke passed: register, session, profile, private grades, logout, login, cookies, cache and private files.');
 } catch(error) { console.error('Cloud smoke failed: '+error.message); process.exitCode=1; }

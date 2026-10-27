@@ -1,6 +1,10 @@
 # Account hosting outside Vercel
 
+Application: **https://tkpst-schedule.onrender.com/**. User confirmed the actual login page works without VPN on 2026-10-27. Service `srv-dbg97mmc6qcc73eo871g`, My Workspace, Free plan, Frankfurt.
+
 Render runs `node server/hosted.mjs` and serves both `web/` and `/api/*` under the same HTTPS origin. Use only the **Free** plan in the confirmed workspace. `render.yaml` describes the service. No Render database or persistent disk is required.
+
+The Render service automatically deploys `codex/accounts-hosting`, the verified hosting branch. GitHub Pages deploys `main`. Keep future application changes merged into the hosting branch as well until the service's branch is changed in the Render dashboard. The Render connector cannot edit that setting; do not create another service or enable paid resources to work around it.
 
 Set `DATABASE_URL` privately to the existing production Neon connection string. Do not copy it into Git, logs or the browser. Hosted startup refuses to run without it and never falls back to SQLite. The database schema, account IDs, password hashes, verification links and existing server-side sessions stay unchanged. Browser cookies are scoped to the new hostname, so users must sign in once there.
 
@@ -11,5 +15,7 @@ Set `DATABASE_URL` privately to the existing production Neon connection string. 
 Free services sleep after 15 idle minutes and can take about one minute to restart. Existing durable rate limits use the socket address in this standalone mode, so people behind the same reverse proxy can share a bucket; no unverified forwarding header is trusted.
 
 Verification: `npm ci`, `npm test`, `npm run build`, then the deployment's `scripts/smoke-cloud.mjs` check and a real browser registration/refresh/logout using a synthetic account. Check the actual service URL without VPN before updating the Pages link.
+
+Verified 2026-10-27: 53 application tests; 24 admin-client tests; deployed HTTP register/login/session/profile/grades/logout, Secure/HttpOnly cookie, private file denial, hostile-origin rejection, admin preflight and unauthenticated rejection, current overrides, and browser register/refresh/logout. User confirmed the actual service login page without VPN. Admin client and CSP now use the Render API. No real student links or credentials were used in tests.
 
 The rejected Neon `accounts` function is a fixed JSON connectivity probe only, without credentials or account operations. It was not made the account backend because the user reported it was unavailable without VPN.

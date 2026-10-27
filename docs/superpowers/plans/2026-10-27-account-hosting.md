@@ -9,18 +9,20 @@
 **Constraints:** Node.js 24.x; existing database only; no paid resources; no SQLite fallback in hosted mode; same-origin HttpOnly/Secure/SameSite=Lax cookies; secrets stay out of Git. Isolated worktree excludes concurrent admin edits.
 
 ## Task 1: Hosted server
-- [ ] Add failing tests for required database configuration, trusted HTTPS origin and live overrides forwarding.
-- [ ] Implement a hosted entry point with validated environment settings and no SQLite fallback.
-- [ ] Proxy overrides.json from the fixed GitHub Pages source, preserving live admin updates.
-- [ ] Run the full suite and build.
+- [x] Add failing tests for required database configuration, trusted HTTPS origin and live overrides forwarding.
+- [x] Implement a hosted entry point with validated environment settings and no SQLite fallback.
+- [x] Proxy overrides.json from the fixed GitHub Pages source, preserving live admin updates.
+- [x] Run the full suite and build.
 
 ## Task 2: Deploy and verify
-- [ ] Add a free Render blueprint and deployment documentation.
-- [ ] Commit and push the hosting branch; deploy in the confirmed workspace with the existing database secret.
-- [ ] Verify registration, session restore, profile, wrong password, logout, origin isolation and private file denial using synthetic data.
-- [ ] Verify real browser cookies and refresh; request the user's no-VPN check on the actual service address.
+- [x] Add a free Render blueprint and deployment documentation.
+- [x] Commit and push the hosting branch; deploy in the confirmed workspace with the existing database secret.
+- [x] Verify registration, session restore, profile, wrong password, logout, private file denial and origin isolation using synthetic data.
+- [x] Verify real browser cookies and refresh; user confirmed the actual Render login page works without VPN.
 - [ ] Update the Pages link only after successful checks; merge and push without overwriting concurrent work.
 
 ## Ledger
 - Probe: Neon accounts function returns a fixed health response only; user reports it is unavailable without VPN. No account APIs or secrets deployed there.
 - Render connected; user explicitly selected My Workspace and free service. Official express.onrender.com demo works without VPN for the user.
+- Actual Render login also confirmed without VPN. Real-browser synthetic registration, refresh and logout passed. Independent migration review found no actionable defects.
+- Ruling: retain the Render service's explicit hosting branch; connector cannot edit it and the dashboard needs interactive sign-in. Document future branch synchronization rather than inventing an update capability.

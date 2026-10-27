@@ -35,7 +35,7 @@ npm start
 
 ## Размещение
 
-Приложение опубликовано на https://tkpst-schedule.vercel.app/ с базой Neon. Текущая инструкция облачной версии — [`docs/vercel-neon.md`](../docs/vercel-neon.md). Ниже описан самостоятельный Node/SQLite-режим.
+Приложение с личным кабинетом опубликовано на https://tkpst-schedule.onrender.com/ с прежней базой Neon. Инструкция — [`docs/account-hosting.md`](../docs/account-hosting.md). Vercel остаётся прежним размещением. Ниже описан самостоятельный Node/SQLite-режим.
 
 GitHub Pages раздаёт статические файлы и не запускает этот сервер. Для ЛК нужен отдельный хостинг Node.js с постоянным диском; эта задача его не публикует.
 
