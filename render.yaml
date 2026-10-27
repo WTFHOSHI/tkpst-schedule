@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: tkpst-schedule
+    runtime: node
+    plan: free
+    region: frankfurt
+    repo: https://github.com/WTFHOSHI/tkpst-schedule
+    branch: codex/accounts-hosting
+    buildCommand: npm ci --omit=dev
+    startCommand: node server/hosted.mjs
+    healthCheckPath: /manifest.webmanifest
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false

@@ -12,7 +12,7 @@ const webRoot = fileURLToPath(new URL('../web/', import.meta.url));
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
 const isOutside = path => { const rel = relative(webRoot, path); return rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel); };
 
-export async function createAuthServer({ dbPath, store, publicOrigin = 'http://127.0.0.1:4173', loginLimit = 20, registrationLimit = 50, now = Date.now, sessionTtl, adminFetch } = {}) {
+export async function createAuthServer({ dbPath, store, publicOrigin = 'http://127.0.0.1:4173', loginLimit = 20, registrationLimit = 50, now = Date.now, sessionTtl, adminFetch, overridesSource, fetchImpl = globalThis.fetch } = {}) {
   const origin = new URL(publicOrigin).origin;
   const persistence = store || createSQLiteStore(dbPath);
   const accounts = await createAccounts({ store: persistence, now, sessionTtl });
@@ -29,6 +29,16 @@ export async function createAuthServer({ dbPath, store, publicOrigin = 'http://1
       const url = new URL(req.url, origin);
       if (url.pathname.startsWith('/api/')) { await authHandler(req, res); return; }
       if (!['GET', 'HEAD'].includes(req.method)) throw new HttpError(405, 'Метод не поддерживается.');
+      if (url.pathname === '/overrides.json' && overridesSource) {
+        let data;
+        try {
+          const upstream = await fetchImpl(overridesSource, { redirect: 'error', signal: AbortSignal.timeout(10_000) });
+          if (!upstream.ok) throw new Error('Upstream unavailable.');
+          data = await upstream.json();
+        } catch { throw new HttpError(503, 'Не удалось обновить замены. Попробуйте позже.'); }
+        res.writeHead(200, { 'Content-Type': mime['.json'], 'Cache-Control': 'no-store' });
+        res.end(req.method === 'HEAD' ? undefined : JSON.stringify(data)); return;
+      }
       let pathname;
       try { pathname = decodeURIComponent(url.pathname); } catch { throw new HttpError(400, 'Неверный адрес.'); }
       if (pathname.includes('\0') || pathname.split(/[\\/]/).some(part => part.startsWith('.'))) throw new HttpError(403, 'Нет доступа.');
