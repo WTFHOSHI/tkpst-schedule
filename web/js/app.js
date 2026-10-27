@@ -13,6 +13,7 @@ import { auth } from './auth-client.js';
 import { authFormMarkup, signedOutMarkup, profileMarkup, personalGradesMarkup } from './auth-view.js';
 
 const $app = document.getElementById('app');
+const staticHosting = location.hostname === 'wtfhoshi.github.io';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const WD = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 
@@ -66,7 +67,8 @@ function render() {
   if (['subject', 'account', 'login', 'register', 'demo'].includes(primary)) currentSection = 'grades';
   if (primary === 'address') currentSection = 'buses';
   $app.dataset.page = Object.hasOwn(routes, path) || primary === 'subject' || demoSubject ? primary || 'schedule' : 'schedule';
-  if (demoSubject) subject(path.slice('demo/subject/'.length));
+  if (staticHosting && authPages.has(primary)) cloudAccount(primary);
+  else if (demoSubject) subject(path.slice('demo/subject/'.length));
   else if (primary === 'subject') grades();
   else (Object.hasOwn(routes, path) ? routes[path] : schedule)();
   document.getElementById('nav').innerHTML = bottomNav(currentSection);
@@ -119,6 +121,10 @@ function announcementHtml() {
 
 const authPages = new Set(['grades', 'subject', 'account', 'login', 'register']);
 const currentPath = () => location.hash.replace(/^#\/?/, '').split('/')[0];
+function cloudAccount(path) {
+  const section = ['login', 'register', 'grades'].includes(path) ? path : 'account';
+  $app.innerHTML = topBar('Личный кабинет', 'Вход и личные данные') + `<main class="grades-main access-main">${icon('user-round')}<h2>Личный кабинет — на отдельном сайте</h2><p>Вход и регистрация доступны по ссылке ниже. Если этот сайт не открывается в вашей сети, расписание и автобусы остаются доступны здесь.</p><a class="btn auth-submit" href="https://tkpst-schedule.vercel.app/#/${section}">Открыть личный кабинет</a><a class="auth-public-link" href="#/schedule">Вернуться к расписанию</a><a class="auth-public-link" href="#/demo">Посмотреть пример журнала</a></main>`;
+}
 function sessionLoading(title) {
   $app.innerHTML = topBar(title, null) + '<main class="grades-main"><div class="msg" role="status"><div class="spinner"></div><p>Проверяем вход…</p></div></main>';
 }
@@ -940,9 +946,9 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 render();
-auth.restore().then(() => { if (authPages.has(currentPath())) render(); });
+if (!staticHosting) auth.restore().then(() => { if (authPages.has(currentPath())) render(); });
 document.addEventListener('visibilitychange', async () => {
-  if (document.hidden) return;
+  if (document.hidden || staticHosting) return;
   const before = auth.state();
   await auth.restore();
   const after = auth.state();
