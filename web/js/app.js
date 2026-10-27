@@ -52,6 +52,7 @@ const routes = { '': schedule, schedule, buses, address, settings, grades, accou
 let currentSection = 'schedule';
 let selectedSemester = '2026-1';
 let selectedAttendanceMonth = currentMonth();
+let selectedProgressTab = 'attendance';
 let viewVersion = 0;
 
 function go(path) { location.hash = '#/' + path; }
@@ -215,14 +216,28 @@ function account() {
 
 function grades() {
   if (!requireAccount('Успеваемость')) return;
-  // A fresh view version also invalidates earlier requests for the same month.
   const version = ++viewVersion;
   const month = selectedAttendanceMonth;
   const user = auth.state().user;
   const active = () => version === viewVersion && month === selectedAttendanceMonth && auth.state().user === user;
   const paint = state => {
     const focused = ['data-attendance-prev', 'data-attendance-next', 'data-attendance-month', 'data-attendance-retry'].find(attr => document.activeElement?.hasAttribute(attr));
-    $app.innerHTML = topBar('Успеваемость', 'Посещаемость и оценки') + attendanceMarkup({ month, ...state });
+    const focusedTab = document.activeElement?.dataset.progressTab;
+    $app.innerHTML = topBar('Успеваемость', 'Оценки и посещаемость') + attendanceMarkup({ month, tab: selectedProgressTab, ...state });
+    $app.querySelectorAll('[data-progress-tab]').forEach(button => {
+      button.onclick = () => {
+        if (selectedProgressTab === button.dataset.progressTab) return;
+        selectedProgressTab = button.dataset.progressTab;
+        render();
+        $app.querySelector(`[data-progress-tab="${selectedProgressTab}"]`)?.focus({ preventScroll: true });
+      };
+      button.onkeydown = event => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        $app.querySelector(`[data-progress-tab="${button.dataset.progressTab === 'grades' ? 'attendance' : 'grades'}"]`)?.click();
+      };
+    });
+    if (selectedProgressTab === 'grades') return;
     $app.querySelector('[data-attendance-prev]').onclick = () => selectMonth(shiftMonth(month, -1));
     $app.querySelector('[data-attendance-next]').onclick = () => selectMonth(shiftMonth(month, 1));
     const input = $app.querySelector('[data-attendance-month]');
@@ -231,22 +246,55 @@ function grades() {
       selectMonth(input.value);
     };
     const retry = $app.querySelector('[data-attendance-retry]');
-    if (retry) retry.onclick = grades;
+    if (retry) retry.onclick = () => load();
     if (focused) $app.querySelector(`[${focused}]`)?.focus({ preventScroll: true });
+    else if (focusedTab) $app.querySelector(`[data-progress-tab="${focusedTab}"]`)?.focus({ preventScroll: true });
   };
   const selectMonth = next => {
     if (next === selectedAttendanceMonth) return;
     selectedAttendanceMonth = next;
-    grades();
+    render();
+  };
+  if (selectedProgressTab === 'grades') { paint({ kind: 'ready' }); return; }
+  let currentData = null;
+  let fingerprint = null;
+  let refreshError = false;
+  let inFlight = false;
+  let lastAttempt = 0;
+  const load = async () => {
+    if (!active() || inFlight) return;
+    inFlight = true;
+    lastAttempt = Date.now();
+    try {
+      const data = await auth.attendance(month);
+      if (!active()) return;
+      const nextFingerprint = JSON.stringify(data);
+      if (fingerprint !== nextFingerprint || refreshError) {
+        currentData = data;
+        fingerprint = nextFingerprint;
+        refreshError = false;
+        paint({ kind: 'ready', data });
+      }
+    } catch (error) {
+      if (version !== viewVersion || month !== selectedAttendanceMonth) return;
+      if (error.status === 401) { render(); return; }
+      if (!active()) return;
+      if (currentData) {
+        if (!refreshError) { refreshError = true; paint({ kind: 'ready', data: currentData, refreshError: true }); }
+      } else paint({ kind: 'error', error: error.message });
+    } finally { inFlight = false; }
   };
   paint({ kind: 'loading' });
-  auth.attendance(month).then(data => {
-    if (active()) paint({ kind: 'ready', data });
-  }).catch(error => {
-    if (version !== viewVersion || month !== selectedAttendanceMonth) return;
-    if (error.status === 401) { render(); return; }
-    if (active()) paint({ kind: 'error', error: error.message });
-  });
+  const onReturn = () => { if (!document.hidden && Date.now() - lastAttempt >= 15_000) load(); };
+  const timer = setInterval(() => { if (!document.hidden) load(); }, 60_000);
+  document.addEventListener('visibilitychange', onReturn);
+  window.addEventListener('focus', onReturn);
+  cleanup = () => {
+    clearInterval(timer);
+    document.removeEventListener('visibilitychange', onReturn);
+    window.removeEventListener('focus', onReturn);
+  };
+  load();
 }
 
 // Пример журнала доступен отдельно и никогда не выдаётся за личные оценки.

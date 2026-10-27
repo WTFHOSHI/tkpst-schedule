@@ -55,18 +55,41 @@ test('attendance view distinguishes unsynced, unmarked, unlinked, loading and er
   assert.doesNotMatch(error, /<img/);
 });
 
-test('journal explains every status, exposes month controls and avoids misleading percentage', async () => {
+test('journal lists only absences and separates grades into another tab', async () => {
   const { attendanceMarkup } = await import('../js/attendance-view.js');
   const html = attendanceMarkup({ month: '2026-10', kind: 'ready', data: {
     linked: true, syncedAt: '2026-10-27T10:00:00Z',
     records: ['P', 'N', 'B', 'U', 'R', 'Z'].map((status, i) => ({ date: '2026-10-26', pair: i + 1, status })),
   } });
-  for (const label of ['Был', 'Прогул', 'Болезнь', 'Уважительная', 'Работа', 'Заявление']) assert.match(html, new RegExp(label));
+  for (const label of ['Прогул', 'Болезнь', 'Уважительная', 'Работа', 'Заявление']) assert.match(html, new RegExp(label));
+  assert.doesNotMatch(html, /1-я пара|>Был</);
+  assert.match(html, /6-я пара/);
+  assert.match(html, /5 пропусков/);
+  assert.equal((html.match(/<time datetime="2026-10-26">/g) || []).length, 1);
   assert.match(html, /type="month"/);
   assert.match(html, /Предыдущий месяц/);
   assert.match(html, /Следующий месяц/);
   assert.match(html, /Последняя передача/);
+  assert.match(html, /Обновляется автоматически/);
+  assert.doesNotMatch(html, /data-attendance-retry/);
   assert.match(html, /Пустые ячейки/);
-  assert.match(html, /Оценки ещё не подключены/);
+  assert.match(html, /data-progress-tab="grades"/);
+  assert.doesNotMatch(html, /Оценки ещё не подключены/);
+  const grades = attendanceMarkup({ month: '2026-10', tab: 'grades', kind: 'ready', data: null });
+  assert.match(grades, /Оценки ещё не подключены/);
+  assert.doesNotMatch(grades, /data-attendance-month|Журнал пропусков/);
   assert.doesNotMatch(html, /%|NaN|Invalid Date/);
+  assert.match(attendanceMarkup({ month: '2026-10', kind: 'ready', refreshError: true, data: {
+    linked: true, syncedAt: '2026-10-27T10:00:00Z', records: [{ date: '2026-10-26', pair: 1, status: 'N' }],
+  } }), /Повторим автоматически/);
+});
+
+test('month with only present marks shows a clear no absences state', async () => {
+  const { attendanceMarkup } = await import('../js/attendance-view.js');
+  const html = attendanceMarkup({ month: '2026-10', kind: 'ready', data: {
+    linked: true, syncedAt: '2026-10-27T10:00:00Z',
+    records: [{ date: '2026-10-26', pair: 1, status: 'P' }],
+  } });
+  assert.match(html, /Пропусков нет/);
+  assert.doesNotMatch(html, /1-я пара/);
 });
