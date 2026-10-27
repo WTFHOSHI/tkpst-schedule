@@ -35,6 +35,9 @@ jobs:
         run: |
           mkdir -p _site
           cp -r web/index.html web/style.css web/sw.js web/manifest.webmanifest web/overrides.json web/js web/icons _site/
+          # Pages cannot serve the account API. Open the full application on Vercel.
+          # Keep overrides.json here for the admin panel and native applications.
+          cp pages/index.html _site/index.html
           # новая версия кэша офлайн-оболочки на каждую сборку
           sed -i "s/tkpst-shell-v[0-9]*/tkpst-shell-${{ github.run_number }}/" _site/sw.js
       - uses: actions/upload-pages-artifact@v3
