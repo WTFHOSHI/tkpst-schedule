@@ -38,6 +38,14 @@ for (const engine of ['SQLite', 'Postgres']) test(`${engine}: private attendance
   assert.deepEqual(result.counts, { P: 1, N: 1, B: 1, U: 1, R: 1, Z: 1, marked: 6, attended: 1, missed: 5, unexcused: 1 });
   assert.ok(!JSON.stringify(result).includes('Private')); assert.ok(!JSON.stringify(result).includes('s2'));
   assert.equal((await accounts.attendance(b.token, { month: '2026-10' })).records[0].status, 'N');
+  const legacy = week(); delete legacy.hide;
+  const legacyTicket = await start(); await sync(legacyTicket.ticket, legacy);
+  assert.equal((await accounts.attendance(a.token, { month: '2026-10' })).records.length, 7, 'legacy weeks without hide mean no hidden pairs');
+  const restore = await start(); await sync(restore.ticket);
+  for (const hide of [null, [], { '2026-10-26': [9] }]) {
+    const malformed = await start();
+    await assert.rejects(sync(malformed.ticket, { ...week(), hide }), e => e.status === 400, 'provided malformed hide remains invalid');
+  }
   const boundary = await start('actor', '2', '2026-09-28');
   await sync(boundary.ticket, { m: { s1: { '2026-09-30': { 1: 'P' }, '2026-10-01': { 2: 'P' } } }, pairs: {}, hide: {}, at: '' }, 'actor', '2', '2026-09-28');
   assert.equal((await accounts.attendance(a.token, { month: '2026-09' })).records.length, 0, 'enrollment dates exclude older records');

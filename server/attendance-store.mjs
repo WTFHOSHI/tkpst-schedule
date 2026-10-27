@@ -22,9 +22,11 @@ export function attendanceWeek(body) {
 }
 export function validateAttendance(body) {
   const scope = attendanceWeek(body), week = body.week;
-  if (!object(week) || Object.keys(week).some(key => !['m', 'pairs', 'hide', 'at', 'by'].includes(key)) || !object(week.m) || !object(week.pairs) || !object(week.hide) || typeof week.at !== 'string' || week.at.length > 40 || week.at && !Number.isFinite(Date.parse(week.at))) throw invalid();
+  // Weeks saved before pair hiding was introduced have no hide field.
+  const hide = week?.hide === undefined ? {} : week.hide;
+  if (!object(week) || Object.keys(week).some(key => !['m', 'pairs', 'hide', 'at', 'by'].includes(key)) || !object(week.m) || !object(week.pairs) || !object(hide) || typeof week.at !== 'string' || week.at.length > 40 || week.at && !Number.isFinite(Date.parse(week.at))) throw invalid();
   const validDay = date => strictDate(date) && date >= scope.monday && date <= scope.saturday;
-  for (const map of [week.pairs, week.hide]) {
+  for (const map of [week.pairs, hide]) {
     if (Object.keys(map).length > 6) throw invalid();
     for (const [date, pairs] of Object.entries(map)) if (!validDay(date) || !Array.isArray(pairs) || pairs.length > 8 || pairs.some(pair => !Number.isInteger(pair) || pair < 1 || pair > 8) || new Set(pairs).size !== pairs.length) throw invalid();
   }
@@ -37,7 +39,7 @@ export function validateAttendance(body) {
       if (!validDay(date) || !object(pairs) || Object.keys(pairs).length > 8) throw invalid();
       for (const [pair, status] of Object.entries(pairs)) {
         if (!/^[1-8]$/.test(pair) || !codes.includes(status) && status !== '' && status !== null) throw invalid();
-        if (status && !week.hide[date]?.includes(Number(pair))) records.push({ date, pair: Number(pair), status });
+        if (status && !hide[date]?.includes(Number(pair))) records.push({ date, pair: Number(pair), status });
       }
     }
     if (records.length) snapshot[student] = records.sort((a, b) => a.date.localeCompare(b.date) || a.pair - b.pair);
