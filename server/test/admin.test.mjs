@@ -120,3 +120,34 @@ test('admin: ticket orders source reads, rejects replay and delayed old snapshot
   assert.equal(list.students.find(s => s.id === 's1').active, false);
   assert.equal((await f.request('/api/admin/sync', { config: oldConfig, ticket: oldTicket }, token)).status, 409);
 });
+test('admin: deleting an account requires exact confirmation, revokes sessions and releases its student', async t => {
+  const f = await fixture(t), token = await f.login();
+  const created = await f.request('/api/auth/register', { username: 'delete_me', displayName: 'Тестовый Аккаунт', password: 'Student long phrase' });
+  const user = (await created.json()).user, cookie = created.headers.get('set-cookie').split(';')[0];
+  const body = { userId: user.id, confirmUsername: 'delete_me' };
+  assert.equal((await f.request('/api/admin/delete-user', body)).status, 401);
+  assert.equal((await f.request('/api/admin/delete-user', { ...body, confirmUsername: 'someone_else' }, token)).status, 404);
+  assert.equal((await f.request('/api/account', {}, null, { Cookie: cookie })).status, 200);
+  await f.request('/api/admin/link', { userId: user.id, course: '2', studentId: 's1' }, token);
+  assert.equal((await f.request('/api/admin/delete-user', body, token)).status, 200);
+  assert.equal((await f.request('/api/account', {}, null, { Cookie: cookie })).status, 401);
+  assert.equal((await f.request('/api/auth/login', { username: 'delete_me', password: 'Student long phrase' })).status, 401);
+  const again = await f.request('/api/auth/register', { username: 'delete_me', displayName: 'Другой Аккаунт', password: 'Student long phrase' });
+  assert.equal(again.status, 201);
+  const second = (await again.json()).user; assert.notEqual(second.id, user.id);
+  assert.equal((await f.request('/api/admin/link', { userId: second.id, course: '2', studentId: 's1' }, token)).status, 200);
+  assert.equal((await f.request('/api/admin/delete-user', body, token)).status, 404, 'old confirmation cannot delete a newly registered account');
+});
+test('admin: deleted student tombstones leave historical source records but unlink LK identity', async t => {
+  const f = await fixture(t), token = await f.login();
+  const r = await f.request('/api/auth/register', { username: 'former_student', displayName: 'Имя аккаунта', password: 'Student long phrase' });
+  const user = (await r.json()).user, cookie = r.headers.get('set-cookie').split(';')[0];
+  await f.request('/api/admin/link', { userId: user.id, course: '2', studentId: 's1' }, token);
+  Object.assign(f.data.config.courses[2].students[0], { name: 'Удалённый студент', deleted: true, to: '2026-10-26' });
+  await f.sync(token);
+  const me = await (await f.request('/api/account', {}, null, { Cookie: cookie })).json();
+  assert.equal(me.user.verifiedStudent, false);
+  const list = await (await f.request('/api/admin/users', {}, token)).json();
+  assert.ok(!list.students.some(s => s.id === 's1'));
+  assert.equal(list.users.find(u => u.id === user.id).link, undefined);
+});

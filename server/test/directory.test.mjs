@@ -45,6 +45,12 @@ for (const engine of ['SQLite', 'Postgres']) test(`${engine}: directory snapshot
   assert.equal((await store.adminSession('adminhash', 99)).vault_hash, 'vaulthash');
   assert.equal(await store.adminSession('adminhash', 100), null);
   await store.deleteAdminSession('adminhash'); assert.equal(await store.adminSession('adminhash', 1), null);
+  await store.replaceRoster([{ course: '2', id: 'delete-link', name: 'Студент', groupName: 'ИС' }], 1000);
+  await store.linkStudent('u1', '2', 'delete-link', '2026-10-27');
+  assert.equal(await store.deleteRegisteredUser('u1', 'wrong-name'), false);
+  assert.equal(await store.deleteRegisteredUser('u1', 'name1'), true);
+  assert.equal(await store.sessionUser('hash1', 1), null);
+  assert.equal(await store.linkStudent('u2', '2', 'delete-link', '2026-10-27'), true, 'account delete cascades link in both engines');
 });
 test('roster validation rejects malformed dates and duplicate identities', () => {
   const config = { courses: Object.fromEntries(['1','2','3'].map(c => [c, { groupName: '', students: [] }])) };

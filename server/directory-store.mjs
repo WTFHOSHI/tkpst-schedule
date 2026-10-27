@@ -21,6 +21,7 @@ export function createDirectoryStore(driver) {
         { text: 'INSERT INTO roster_state (id, synced_at) VALUES (1,$1) ON CONFLICT(id) DO UPDATE SET synced_at = CASE WHEN roster_state.synced_at <= excluded.synced_at THEN excluded.synced_at ELSE roster_state.synced_at END RETURNING synced_at', params: [now] },
         { text: 'DELETE FROM student_roster WHERE EXISTS (SELECT 1 FROM roster_state WHERE id = 1 AND synced_at = $1)', params: [now] },
         ...students.map(s => ({ text: 'INSERT INTO student_roster (course, student_id, name, group_name, from_date, to_date) SELECT $1,$2,$3,$4,$5,$6 WHERE EXISTS (SELECT 1 FROM roster_state WHERE id = 1 AND synced_at = $7)', params: [s.course, s.id, s.name, s.groupName, s.from || null, s.to || null, now] })),
+        { text: 'DELETE FROM user_student_links WHERE EXISTS (SELECT 1 FROM roster_state WHERE id = 1 AND synced_at = $1) AND NOT EXISTS (SELECT 1 FROM student_roster r WHERE r.course = user_student_links.course AND r.student_id = user_student_links.student_id)', params: [now] },
       ]);
       return Number(results[0][0].synced_at) === now;
     },
@@ -47,6 +48,7 @@ export function createDirectoryStore(driver) {
     ]),
     adminSession: async (hash, now) => (await driver.query('SELECT vault_hash FROM admin_sessions WHERE token_hash = $1 AND expires_at > $2', [hash, now]))[0] || null,
     deleteAdminSession: hash => driver.query('DELETE FROM admin_sessions WHERE token_hash = $1', [hash]),
+    deleteRegisteredUser: async (id, username) => (await driver.query('DELETE FROM users WHERE id = $1 AND username = $2 RETURNING id', [id, username])).length === 1,
     async linkStudent(userId, course, studentId, today) {
       if (studentId === null) {
         await driver.query('DELETE FROM user_student_links WHERE user_id = $1', [userId]); return true;

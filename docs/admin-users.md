@@ -1,27 +1,29 @@
-# Existing admin directory and registered accounts
+# Registered accounts and unified admin login
 
 Admin: https://wtfhoshi.github.io/tkpst-admin/#users
 
-The source checkout is `../tkpst-admin`. Its encrypted private GitHub config is the authoritative people directory. It currently contains people, courses and attendance, not subject grades. This integration copies minimal directory fields only; grades stay explicitly disconnected.
+The source checkout is ../tkpst-admin. Its encrypted private GitHub config is the authoritative people directory. It contains people, courses and attendance, not subject grades. This integration copies minimal directory fields only; grades remain explicitly disconnected.
 
-## Workflow
+## Common session
 
-1. Students register normally at https://tkpst-schedule.vercel.app/#/register.
-2. Administrator enters the existing admin password in the new Users tab. The backend verifies the AES-GCM admin vault entry (PBKDF2-SHA256) from the pinned public URL, decrypts private config and atomically refreshes the directory.
-3. Administrator checks the person's identity and explicitly selects their course/student record. The confirmation shows both username and student's name.
-4. Their LK shows verified full name, group and course. Other accounts cannot read these details. Unlinking, roster removal or withdrawal removes verification.
+All three admin sections now use the same vault-based role login and form. Administrator/starosta/curator passwords remain unchanged. Administrator login also verifies the admin vault entry on Vercel in that same submission and stores the resulting bearer inside the existing admin_session, with the same remember choice and maximum one-day expiry. No password or derived password key is persisted. One common logout clears all role/session credentials before awaiting server revocation. Other roles can use schedule/attendance, and see an explicit Users permission state.
 
-`POST /api/admin/login`, `/users`, `/link`, `/logout` use exact-origin CORS and independent 30-minute random bearer tokens, hashed in `admin_sessions`. Student cookies never authorize admin calls. Each authorized request rechecks public vault fingerprint, so vault rotation revokes old sessions. IP/global durable throttles limit password derivation. Tokens live only in the admin page's memory, and role-switch/logout clears them before awaiting the network. Private reads remain POST/no-store for old service workers.
+Old remembered administrator sessions without a server bearer require one common re-login after deployment. Normal student LK username/password accounts remain separate.
 
-`student_roster`, `roster_state`, `user_student_links`, `admin_sessions` are additive, idempotent schema changes shared by PostgreSQL and local SQLite. Refreshes serialize on the roster_state singleton and reject older request snapshots. Unique course/student prevents two accounts claiming the same student. Passwords, GitHub credentials, data keys and attendance marks are never persisted by this integration.
+## Directory synchronization
+
+Password authentication now depends only on the vault, so a newly initialized directory can be created from Attendance after login. Users initially require a successful directory sync. The existing browser backend decrypts the private config using its existing GitHub/data credentials. Before reading that source, the client obtains a one-use sync ticket bound to its server-verified admin session. A durable SQL clock assigns strictly increasing markers, including requests in the same millisecond. Tickets expire after60seconds, cannot be replayed or used by another session, and order snapshot replacement even when source responses return out of order. Stale snapshots return409. Invalid snapshots do not mutate the roster. Source failure cannot be bypassed by retry/search/filter/refresh to use an old snapshot.
+
+The protected sync endpoint receives only config for validation and minimal storage. GitHub tokens, encryption keys, password and attendance marks are never sent in a sync or persisted by the cloud service. Every authorized API call rechecks the public vault fingerprint. The origin is pinned, student cookies cannot authorize administrative operations, and authentication uses durable IP/global limits.
+
+## Users workflow
+
+Search matches login, registration name and verified directory name. Filters apply across every page, not only visible rows. Each account expands to show its student link, selection control and explicit inline confirmation. Administrator checks identity and confirms; an entered registration name never verifies anyone automatically. One course/student is linked to at most one account. The linked student's own LK shows verified name/group/course. Unlinking, removal or withdrawal removes verification after current directory synchronization.
 
 ## Verification
 
-- Auth/HTTP tests cover valid cryptography and decryption, invalid password/forged role, student-cookie isolation, CORS/preflight, rate limits, expiry/vault rotation, explicit linking, conflict, unlink and withdrawal.
-- SQLite and PGlite tests cover 105-account pagination, literal wildcard and Cyrillic search, transactional rollback, stale snapshots and session persistence.
-- Admin client tests cover XSS escaping, no cookie forwarding, request allowlist, expiry, stale login and role-switch/logout races.
-- Production real roster import requires the administrator's password login. Do not copy their password into chat or impersonate a real student to test links.
+Application suite51/51 and admin suite24/24 pass. Tests cover cryptography, rights isolation, vault rotation/expiry, common-session restore, logout/role races, missing directory on first login, one-day lifetime, ticket ownership/replay/order, stale snapshots, validated atomic sync, Unicode/literal search, global filters and pagination, linking conflicts and withdrawal.
 
-Neon migration test branch: `br-polished-cake-b9f6u0pp`, `admin-users-schema-check`, min/max 0.25 CU on existing free project. It uses the account's default automatic suspension. Retained for migration review; no paid resources enabled.
+Isolated browser fixture test/preview.mjs serves real admin frontend modules against synthetic local vault/GitHub/API services. Browser checks covered login+remember, filters, Users→Attendance→Users without password, reset of filter state, page reload preserving login, explicit inline linking, global logout and curator access restriction. Desktop/mobile layouts were visually checked. Real production roster/account links were not changed by testing.
 
-Published 2026-10-27: Vercel deployment `dpl_GoqZFTjyDoD85UZAMGqeX5vA6EnQ` READY; admin main commit `3471a6ade3f9d91e7d0e7c4224fad3a63881369e`, GitHub Pages run40495942238 succeeded. New page visibly serves all three navigation tabs. Production preflight204, unauthenticated401, invalid password401, hostile origin403 and existing anonymous student session200 verified.
+Neon project fancy-butterfly-66288752; migration test branch br-polished-cake-b9f6u0pp, min/max0.25CU on the existing free plan. Additive sync clock/ticket schema tested there before production. No paid resources enabled.
