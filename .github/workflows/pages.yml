@@ -35,6 +35,8 @@ jobs:
         run: |
           mkdir -p _site
           cp -r web/index.html web/style.css web/sw.js web/manifest.webmanifest web/overrides.json web/js web/icons _site/
+          # Load the current entry module even when a browser cached an older release.
+          sed -i 's|src="js/app.js"|src="js/app.js?v=${{ github.sha }}"|' _site/index.html
           # новая версия кэша офлайн-оболочки на каждую сборку
           sed -i "s/tkpst-shell-v[0-9]*/tkpst-shell-${{ github.run_number }}/" _site/sw.js
       - uses: actions/upload-pages-artifact@v3
