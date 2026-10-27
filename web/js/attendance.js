@@ -1,3 +1,5 @@
+import { T, buildTimeline } from './core.js';
+
 export const MIN_MONTH = '2000-01';
 export const MAX_MONTH = '2100-12';
 export const ATTENDANCE_STATUSES = Object.freeze({
@@ -23,6 +25,20 @@ export function shiftMonth(month, step) {
 
 export function monthLabel(month) {
   return validMonth(month) ? new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric', timeZone: 'Asia/Yekaterinburg' }).format(new Date(`${month}-01T12:00:00Z`)) : '';
+}
+
+/** Names for a dated pair, using the same substitutions and Monday numbering as the timetable. */
+export function subjectTitlesForDay(iso, lessons) {
+  if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(iso) || !Array.isArray(lessons)) return {};
+  const day = T.parseIso(iso);
+  if (!Number.isFinite(day) || T.iso(day) !== iso) return {};
+  const titles = {};
+  for (const entry of buildTimeline(T.weekday(day), lessons, iso)) {
+    if (entry.type !== 'pair' || entry.cancelled) continue;
+    const title = [...new Set(entry.lessons.map(lesson => String(lesson.title || '').trim()).filter(Boolean))].join(' / ');
+    if (title) titles[`${iso}/${entry.number}`] = title;
+  }
+  return titles;
 }
 
 // Count only explicit, valid marks. An empty source cell says nothing about attendance.

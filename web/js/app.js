@@ -11,7 +11,7 @@ import { icon, bottomNav } from './ui.js';
 import { gradesMarkup, subjectMarkup } from './grades-view.js';
 import { auth } from './auth-client.js';
 import { authFormMarkup, signedOutMarkup, profileMarkup } from './auth-view.js';
-import { currentMonth, shiftMonth, validMonth } from './attendance.js';
+import { attendanceModel, currentMonth, shiftMonth, subjectTitlesForDay, validMonth } from './attendance.js';
 import { attendanceMarkup } from './attendance-view.js';
 
 const $app = document.getElementById('app');
@@ -219,11 +219,13 @@ function grades() {
   const version = ++viewVersion;
   const month = selectedAttendanceMonth;
   const user = auth.state().user;
+  let subjects = {};
+  let subjectsPending = false;
   const active = () => version === viewVersion && month === selectedAttendanceMonth && auth.state().user === user;
   const paint = state => {
     const focused = ['data-attendance-prev', 'data-attendance-next', 'data-attendance-month', 'data-attendance-retry'].find(attr => document.activeElement?.hasAttribute(attr));
     const focusedTab = document.activeElement?.dataset.progressTab;
-    $app.innerHTML = topBar('Успеваемость', 'Оценки и посещаемость') + attendanceMarkup({ month, tab: selectedProgressTab, ...state });
+    $app.innerHTML = topBar('Успеваемость', 'Оценки и посещаемость') + attendanceMarkup({ month, tab: selectedProgressTab, subjects, subjectsPending, ...state });
     $app.querySelectorAll('[data-progress-tab]').forEach(button => {
       button.onclick = () => {
         if (selectedProgressTab === button.dataset.progressTab) return;
@@ -261,6 +263,24 @@ function grades() {
   let refreshError = false;
   let inFlight = false;
   let lastAttempt = 0;
+  const loadTitles = async (dates, expectedFingerprint) => {
+    await refreshOverrides();
+    const titles = {};
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(3, dates.length) }, async () => {
+      while (next < dates.length) {
+        const date = dates[next++];
+        try {
+          const day = await loadDay(T.parseIso(date));
+          Object.assign(titles, subjectTitlesForDay(date, day.lessons));
+        } catch { /* Для пары без доступного расписания останется номер. */ }
+      }
+    }));
+    if (!active() || fingerprint !== expectedFingerprint) return;
+    subjects = titles;
+    subjectsPending = false;
+    paint({ kind: 'ready', data: currentData, refreshError });
+  };
   const load = async () => {
     if (!active() || inFlight) return;
     inFlight = true;
@@ -271,8 +291,21 @@ function grades() {
       const nextFingerprint = JSON.stringify(data);
       if (fingerprint !== nextFingerprint || refreshError) {
         currentData = data;
+        const changed = fingerprint !== nextFingerprint;
         fingerprint = nextFingerprint;
         refreshError = false;
+        if (changed) {
+          const group = user.student?.groupName?.replace(/\s+/g, '').toUpperCase();
+          const days = group === 'ИС-25-3С' ? attendanceModel(data, month).days.filter(day => day.records.some(record => record.status !== 'P')).map(day => day.date) : [];
+          subjects = {};
+          for (const date of days) {
+            const cached = cachedDay(T.parseIso(date));
+            try { if (cached) Object.assign(subjects, subjectTitlesForDay(date, cached.lessons)); }
+            catch { /* Повреждённый кэш не мешает загрузить свежее расписание. */ }
+          }
+          subjectsPending = days.length > 0;
+          if (days.length) void loadTitles(days, nextFingerprint);
+        }
         paint({ kind: 'ready', data });
       }
     } catch (error) {

@@ -12,7 +12,7 @@ function missedLabel(count) {
   return `${count} ${lastTwo >= 11 && lastTwo <= 14 ? 'пропусков' : last === 1 ? 'пропуск' : last >= 2 && last <= 4 ? 'пропуска' : 'пропусков'}`;
 }
 
-export function attendanceMarkup({ month, tab = 'attendance', kind = 'loading', data, error, refreshError = false }) {
+export function attendanceMarkup({ month, tab = 'attendance', kind = 'loading', data, error, refreshError = false, subjects = {}, subjectsPending = false }) {
   const activeTab = tab === 'grades' ? 'grades' : 'attendance';
   const tabs = `<div class="progress-tabs" role="tablist" aria-label="Разделы успеваемости"><button type="button" role="tab" id="progress-attendance-tab" aria-controls="progress-attendance" aria-selected="${activeTab === 'attendance'}" data-progress-tab="attendance">Посещаемость</button><button type="button" role="tab" id="progress-grades-tab" aria-controls="progress-grades" aria-selected="${activeTab === 'grades'}" data-progress-tab="grades">Оценки</button></div>`;
   if (activeTab === 'grades') return `<main class="grades-main attendance-main">${tabs}${gradeNotice}</main>`;
@@ -36,7 +36,11 @@ export function attendanceMarkup({ month, tab = 'attendance', kind = 'loading', 
       ? '<div class="attendance-state"><h3>Пока нет отметок</h3><p>В переданных данных за этот месяц нет отметок посещаемости.</p></div>'
       : !missedDays.length
         ? '<div class="attendance-state attendance-empty"><h3>Пропусков нет</h3><p>Среди переданных отметок за этот месяц пропусков нет.</p></div>'
-        : `<section class="attendance-journal" aria-label="Список пропусков"><ul class="attendance-absence-list">${missedDays.map(day => `<li class="attendance-absence-day"><h3><time datetime="${day.date}">${esc(dayFormat.format(new Date(day.date + 'T12:00:00Z')))}</time></h3><ul>${day.records.map(record => `<li><span>${record.pair}-я пара</span><span class="attendance-status ${record.status === 'N' ? 'is-unexcused' : ''}">${esc(ATTENDANCE_STATUSES[record.status])}</span></li>`).join('')}</ul></li>`).join('')}</ul></section>`;
+        : `<section class="attendance-journal" aria-label="Список пропусков"><ul class="attendance-absence-list">${missedDays.map(day => `<li class="attendance-absence-day"><h3><time datetime="${day.date}">${esc(dayFormat.format(new Date(day.date + 'T12:00:00Z')))}</time></h3><ul>${day.records.map(record => {
+          const title = subjects[`${record.date}/${record.pair}`];
+          const label = typeof title === 'string' && title.trim() ? title.trim() : subjectsPending ? 'Загружаем предмет…' : `${record.pair}-я пара`;
+          return `<li><span class="attendance-lesson${label === `${record.pair}-я пара` ? ' is-fallback' : ''}">${esc(label)}</span><span class="attendance-status ${record.status === 'N' ? 'is-unexcused' : ''}">${esc(ATTENDANCE_STATUSES[record.status])}</span></li>`;
+        }).join('')}</ul></li>`).join('')}</ul></section>`;
     content = `${summary}${journal}<p class="attendance-caption">Пустые ячейки не считаются пропусками.</p><div class="attendance-sync"><p>Последняя передача: <time datetime="${esc(model.syncedAt)}">${esc(syncFormat.format(new Date(model.syncedAt)))}</time> · Тюмень</p><p>Обновляется автоматически</p></div>${refreshError ? '<p class="attendance-refresh-error" role="status">Не удалось проверить новые отметки. Повторим автоматически.</p>' : ''}`;
   }
   return `<main class="grades-main attendance-main">${tabs}<section role="tabpanel" id="progress-attendance" aria-labelledby="progress-attendance-tab"><h2 class="sr-only">Посещаемость</h2>${controls}<div data-attendance-content aria-live="polite" aria-busy="${kind === 'loading'}">${content}</div></section></main>`;

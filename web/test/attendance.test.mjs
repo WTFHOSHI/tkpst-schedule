@@ -93,3 +93,36 @@ test('month with only present marks shows a clear no absences state', async () =
   assert.match(html, /Пропусков нет/);
   assert.doesNotMatch(html, /1-я пара/);
 });
+
+test('absence subject titles follow the dated timetable, replacements and subgroups', async () => {
+  const { subjectTitlesForDay } = await import('../js/attendance.js');
+  const { setOverrides } = await import('../js/core.js');
+  setOverrides({ days: { '2026-10-26': { pairs: [{ number: 2, title: 'История (замена)' }] } } });
+  try {
+    const titles = subjectTitlesForDay('2026-10-26', [
+      { title: 'Классный час', order: 1, startTime: '08:00:00', endTime: '08:30:00' },
+      { title: 'Физика', order: 2, startTime: '08:30:00', endTime: '10:00:00' },
+      { title: 'История', order: 3, startTime: '10:10:00', endTime: '11:40:00' },
+      { title: 'Английский · 1 группа', order: 4, startTime: '12:20:00', endTime: '13:50:00' },
+      { title: 'Английский · 2 группа', order: 4, startTime: '12:20:00', endTime: '13:50:00' },
+    ]);
+    assert.equal(titles['2026-10-26/1'], 'Физика');
+    assert.equal(titles['2026-10-26/2'], 'История (замена)');
+    assert.equal(titles['2026-10-26/3'], 'Английский · 1 группа / Английский · 2 группа');
+    assert.equal(titles['2026-10-26/4'], undefined);
+  } finally { setOverrides(null); }
+});
+
+test('absence list uses escaped subject names and keeps a number when timetable has none', async () => {
+  const { attendanceMarkup } = await import('../js/attendance-view.js');
+  const data = { linked: true, syncedAt: '2026-10-27T10:00:00Z', records: [
+    { date: '2026-10-26', pair: 2, status: 'N' },
+    { date: '2026-10-26', pair: 3, status: 'B' },
+  ] };
+  const html = attendanceMarkup({ month: '2026-10', kind: 'ready', data, subjects: { '2026-10-26/2': 'История <замена>' } });
+  assert.match(html, /История &lt;замена&gt;/);
+  assert.doesNotMatch(html, /2-я пара|<замена>/);
+  assert.match(html, /3-я пара/);
+  const pending = attendanceMarkup({ month: '2026-10', kind: 'ready', data, subjectsPending: true });
+  assert.match(pending, /Загружаем предмет/);
+});

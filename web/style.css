@@ -425,7 +425,8 @@ h1, h2, h3, p { overflow-wrap: anywhere; }
 .attendance-absence-day h3::first-letter { text-transform: uppercase; }
 .attendance-absence-day ul { margin: 4px 0 0; padding: 0; list-style: none; }
 .attendance-absence-day li { display: flex; justify-content: space-between; align-items: center; gap: 14px; min-height: 49px; padding: 7px 0; border-bottom: 1px solid var(--outline); }
-.attendance-absence-day li > span:first-child { font-size: 15px; }
+.attendance-lesson { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.attendance-lesson.is-fallback { color: var(--muted); font-weight: 500; }
 .attendance-status { flex: none; max-width: 46%; padding: 6px 10px; border-radius: 8px; background: var(--card-high); font-size: 13px; font-weight: 650; text-align: right; }
 .attendance-status.is-unexcused { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, var(--card)); }
 .attendance-state { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 22px 0 28px; }
