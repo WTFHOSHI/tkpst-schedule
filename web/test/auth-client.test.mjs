@@ -64,3 +64,30 @@ test('поздний 401 старого журнала не отменяет н�
   await assert.rejects(stale);
   assert.equal(client.state().user.id, 'one');
 });
+
+test('attendance posts only selected month using private session cookie', async () => {
+  let request;
+  const client = createAuthClient(async (path, options) => { request = { path, options }; return reply({ linked: false, records: [] }); });
+  await client.attendance('2026-10');
+  assert.equal(request.path, '/api/attendance');
+  assert.equal(request.options.body, '{"month":"2026-10"}');
+  assert.equal(request.options.method, 'POST');
+  assert.equal(request.options.credentials, 'same-origin');
+  assert.equal(request.options.cache, 'no-store');
+});
+
+test('stale attendance 401 cannot clear a newer login but current 401 clears session', async () => {
+  let finish;
+  const client = createAuthClient(async path => path === '/api/attendance'
+    ? new Promise(resolve => { finish = resolve; }) : reply({ user }));
+  await client.authenticate('login', {});
+  const stale = client.attendance('2026-10');
+  await client.authenticate('login', {});
+  finish(reply({ error: 'Сеанс истёк' }, 401));
+  await assert.rejects(stale);
+  assert.equal(client.state().user.id, 'one');
+  const current = client.attendance('2026-11');
+  finish(reply({ error: 'Сеанс истёк' }, 401));
+  await assert.rejects(current);
+  assert.equal(client.state().user, null);
+});

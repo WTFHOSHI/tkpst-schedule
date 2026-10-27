@@ -400,3 +400,48 @@ h1, h2, h3, p { overflow-wrap: anywhere; }
 .account-main .account-cta { display: flex; width: 100%; min-height: 52px; }
 .logout-button { display: flex; align-items: center; gap: 12px; color: var(--danger); min-height: 52px; margin-top: 24px; text-align: left; }
 .logout-button:disabled { opacity: .6; cursor: wait; }
+
+/* Личная посещаемость: только отметки, переданные администратором. */
+.attendance-main { padding-top: 12px; }
+.attendance-main > section > h2 { font-size: 20px; }
+.attendance-month { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 8px; margin-top: 14px; }
+.attendance-month .icon { width: 44px; height: 48px; color: var(--primary); }
+.attendance-month .icon:disabled { opacity: .35; cursor: default; }
+.attendance-month label { min-width: 0; }
+.attendance-month input { display: block; width: 100%; min-width: 0; max-width: 100%; height: 48px; border: 1px solid var(--outline); border-radius: 12px; padding: 8px 10px; background: var(--card); color: var(--text); font: inherit; font-size: 16px; font-weight: 650; color-scheme: light; }
+:root[data-theme="dark"] .attendance-month input { color-scheme: dark; }
+@media (prefers-color-scheme: dark) { :root[data-theme="system"] .attendance-month input { color-scheme: dark; } }
+.attendance-month-label { margin: 5px 0 18px; text-align: center; color: var(--muted); font-size: 13px; }
+.attendance-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 20px 14px; background: var(--primary); color: var(--on-primary); border-radius: 16px; }
+.attendance-summary > div { display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 6px; min-width: 0; }
+.attendance-summary dt { font-size: 12px; line-height: 1.35; }
+.attendance-summary dd { margin: 0; font-size: 34px; font-weight: 800; line-height: 1; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+.attendance-caption { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 10px 0 0; }
+.attendance-reasons { border-bottom: 1px solid var(--outline); padding-block: 4px 12px; margin-top: 12px; }
+.attendance-reasons summary { color: var(--primary); cursor: pointer; min-height: 44px; padding-block: 12px; font-size: 15px; font-weight: 650; }
+.attendance-reasons summary:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+.attendance-reasons dl { margin: 4px 0; }
+.attendance-reasons dl > div { display: flex; justify-content: space-between; gap: 12px; padding-block: 7px; font-size: 14px; }
+.attendance-reasons dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; }
+.attendance-journal { margin-top: 26px; }
+.attendance-journal > h2 { font-size: 20px; }
+.attendance-day { margin-top: 20px; }
+.attendance-day h3 { margin: 0; padding-bottom: 8px; color: var(--muted); font-size: 14px; font-weight: 600; }
+.attendance-day h3::first-letter { text-transform: uppercase; }
+.attendance-day ul { margin: 0; padding: 0; list-style: none; }
+.attendance-day li { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 49px; border-bottom: 1px solid var(--outline); font-size: 15px; }
+.attendance-status { padding: 5px 10px; border-radius: 8px; background: var(--card-high); font-size: 13px; font-weight: 650; text-align: right; }
+.attendance-status.is-present { background: var(--primary-c); color: var(--on-primary-c); }
+.attendance-status.is-unexcused { color: var(--danger); }
+.attendance-state { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 22px 0 28px; }
+.attendance-state h3 { margin: 0; font-size: 21px; line-height: 1.3; }
+.attendance-state p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.6; }
+.attendance-state p.auth-error { color: var(--danger); }
+.attendance-state .btn { width: 100%; margin-top: 4px; }
+.attendance-sync { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 20px; border-top: 1px solid var(--outline); padding-top: 8px; }
+.attendance-sync p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.attendance-refresh { min-height: 44px; padding: 8px 0 8px 8px; color: var(--primary); font-size: 14px; font-weight: 650; }
+.attendance-grade-note { border-top: 1px solid var(--outline); margin-top: 28px; padding-top: 24px; }
+.attendance-grade-note h2 { font-size: 18px; }
+.attendance-grade-note p { color: var(--muted); font-size: 14px; margin: 8px 0 0; line-height: 1.6; }
+.attendance-grade-note .auth-public-link { margin-top: 6px; font-size: 14px; }

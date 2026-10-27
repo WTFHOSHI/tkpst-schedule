@@ -10,7 +10,9 @@ import {
 import { icon, bottomNav } from './ui.js';
 import { gradesMarkup, subjectMarkup } from './grades-view.js';
 import { auth } from './auth-client.js';
-import { authFormMarkup, signedOutMarkup, profileMarkup, personalGradesMarkup } from './auth-view.js';
+import { authFormMarkup, signedOutMarkup, profileMarkup } from './auth-view.js';
+import { currentMonth, shiftMonth, validMonth } from './attendance.js';
+import { attendanceMarkup } from './attendance-view.js';
 
 const $app = document.getElementById('app');
 const staticHosting = location.hostname === 'wtfhoshi.github.io';
@@ -49,6 +51,7 @@ let cleanup = null;     // остановка таймеров экрана
 const routes = { '': schedule, schedule, buses, address, settings, grades, account, login, register, demo };
 let currentSection = 'schedule';
 let selectedSemester = '2026-1';
+let selectedAttendanceMonth = currentMonth();
 let viewVersion = 0;
 
 function go(path) { location.hash = '#/' + path; }
@@ -132,7 +135,7 @@ function requireAccount(title) {
   const state = auth.state();
   if (state.status === 'loading') { sessionLoading(title); return false; }
   if (state.user) return true;
-  $app.innerHTML = topBar(title, 'Личные оценки') + signedOutMarkup(state.status === 'unavailable');
+  $app.innerHTML = topBar(title, 'Посещаемость и оценки') + signedOutMarkup(state.status === 'unavailable');
   const retry = $app.querySelector('[data-auth-retry]');
   if (retry) retry.onclick = async () => { retry.disabled = true; await auth.restore(); if (authPages.has(currentPath())) render(); };
   return false;
@@ -212,15 +215,37 @@ function account() {
 
 function grades() {
   if (!requireAccount('Успеваемость')) return;
-  const version = viewVersion;
-  $app.innerHTML = topBar('Успеваемость', 'Личные оценки') + '<main class="grades-main"><p role="status">Загружаем журнал…</p></main>';
-  auth.grades().then(() => {
-    if (version === viewVersion) $app.innerHTML = topBar('Успеваемость', 'Личные оценки') + personalGradesMarkup();
+  // A fresh view version also invalidates earlier requests for the same month.
+  const version = ++viewVersion;
+  const month = selectedAttendanceMonth;
+  const user = auth.state().user;
+  const active = () => version === viewVersion && month === selectedAttendanceMonth && auth.state().user === user;
+  const paint = state => {
+    const focused = ['data-attendance-prev', 'data-attendance-next', 'data-attendance-month', 'data-attendance-retry'].find(attr => document.activeElement?.hasAttribute(attr));
+    $app.innerHTML = topBar('Успеваемость', 'Посещаемость и оценки') + attendanceMarkup({ month, ...state });
+    $app.querySelector('[data-attendance-prev]').onclick = () => selectMonth(shiftMonth(month, -1));
+    $app.querySelector('[data-attendance-next]').onclick = () => selectMonth(shiftMonth(month, 1));
+    const input = $app.querySelector('[data-attendance-month]');
+    input.onchange = () => {
+      if (!validMonth(input.value)) { input.reportValidity(); input.value = month; return; }
+      selectMonth(input.value);
+    };
+    const retry = $app.querySelector('[data-attendance-retry]');
+    if (retry) retry.onclick = grades;
+    if (focused) $app.querySelector(`[${focused}]`)?.focus({ preventScroll: true });
+  };
+  const selectMonth = next => {
+    if (next === selectedAttendanceMonth) return;
+    selectedAttendanceMonth = next;
+    grades();
+  };
+  paint({ kind: 'loading' });
+  auth.attendance(month).then(data => {
+    if (active()) paint({ kind: 'ready', data });
   }).catch(error => {
-    if (version !== viewVersion) return;
+    if (version !== viewVersion || month !== selectedAttendanceMonth) return;
     if (error.status === 401) { render(); return; }
-    $app.innerHTML = topBar('Успеваемость', 'Личные оценки') + '<main class="grades-main"><p class="auth-error" role="alert">Не удалось загрузить журнал.</p><button class="btn" data-grades-retry>Повторить</button></main>';
-    $app.querySelector('[data-grades-retry]').onclick = grades;
+    if (active()) paint({ kind: 'error', error: error.message });
   });
 }
 

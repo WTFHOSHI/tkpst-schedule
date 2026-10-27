@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { directorySchema, createDirectoryStore } from './directory-store.mjs';
+import { attendanceSchema, createAttendanceStore } from './attendance-store.mjs';
 
 export function createSQLiteStore(dbPath) {
   mkdirSync(dirname(dbPath), { recursive: true });
@@ -14,7 +15,7 @@ export function createSQLiteStore(dbPath) {
     CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires_at);
     CREATE TABLE IF NOT EXISTS auth_rate_limits (bucket TEXT PRIMARY KEY, count INTEGER NOT NULL, expires_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS rate_expiry ON auth_rate_limits(expires_at);`);
-  db.exec(directorySchema.join(';') + ';');
+  db.exec([...directorySchema, ...attendanceSchema].join(';') + ';');
   function directoryQuery(text, params) {
     const values = [];
     const sql = text.replace(/\$(\d+)/g, (_, n) => { values.push(params[Number(n) - 1]); return '?'; });
@@ -32,6 +33,7 @@ export function createSQLiteStore(dbPath) {
   }
   return {
     ...createDirectoryStore({ query: directoryQuery, transaction: statements => transaction(() => statements.map(s => directoryQuery(s.text, s.params))) }),
+    ...createAttendanceStore({ query: directoryQuery, transaction: statements => transaction(() => statements.map(s => directoryQuery(s.text, s.params))) }),
     findUser: username => db.prepare('SELECT * FROM users WHERE username = ?').get(username) || null,
     createUserWithSession: (user, session, previousHash, now) => transaction(() => {
       db.prepare('INSERT INTO users (id, username, display_name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)').run(user.id, user.username, user.display_name, user.password_hash, user.created_at);

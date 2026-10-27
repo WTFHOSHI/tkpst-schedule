@@ -49,6 +49,7 @@ export function createAuthHandler({ accounts, adminHandler, publicOrigin, loginL
       const url = new URL(req.url, origin);
       const body = await readBody(req);
       const token = cookieOf(req);
+      if (url.pathname === '/api/attendance') { json(res, 200, await accounts.attendance(token, body)); return; }
       if (url.pathname === '/api/auth/session') { json(res, 200, { user: await accounts.session(token) }); return; }
       if (['/api/account', '/api/grades'].includes(url.pathname)) {
         const user = await accounts.session(token);

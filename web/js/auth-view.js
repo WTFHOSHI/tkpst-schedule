@@ -23,7 +23,7 @@ export function authFormMarkup(mode) {
 }
 
 export function signedOutMarkup(unavailable = false) {
-  return `<main class="grades-main access-main">${icon('user-round')}<h2>Ваши оценки — в личном кабинете</h2><p>Войдите или создайте аккаунт. После подключения журнала здесь появится ваша успеваемость.</p>
+  return `<main class="grades-main access-main">${icon('user-round')}<h2>Посещаемость в личном кабинете</h2><p>Войдите или создайте аккаунт. После подтверждения администратором здесь будут ваши отметки посещаемости.</p>
     ${unavailable ? '<p class="auth-error" role="status">Сервис входа временно недоступен.</p><button class="btn outline" data-auth-retry>Проверить соединение</button>' : ''}
     <a class="btn auth-submit" href="#/login">Войти в личный кабинет</a><a class="btn outline" href="#/register">Создать аккаунт</a>
     <a class="auth-public-link" href="#/demo">Посмотреть пример журнала</a></main>`;
@@ -34,11 +34,11 @@ export function profileMarkup(user) {
   return `<main class="grades-main account-main"><div class="profile-preview">${icon('user-round')}<div><h2>${esc(student ? student.displayName : user.displayName)}</h2><p>@${esc(user.username)}</p></div></div>
     <dl class="profile-facts"><div><dt>Студент</dt><dd>${student ? 'Подтверждён администратором' : 'Ожидает подтверждения'}</dd></div>${student ? `<div><dt>Группа</dt><dd>${esc(student.groupName || 'Не указана')} · ${esc(student.course)} курс</dd></div>` : ''}<div><dt>Оценки</dt><dd>Журнал не подключён</dd></div></dl>
     ${student ? '' : '<p class="field-hint">Сообщите администратору свой логин, чтобы он связал аккаунт с вами в списке группы.</p>'}
-    <a class="btn account-cta" href="#/grades">${icon('chart-no-axes-column')} Мои оценки</a>
+    <a class="btn account-cta" href="#/grades">${icon('chart-no-axes-column')} Моя успеваемость</a>
     <a class="account-settings" href="#/settings">${icon('settings')}<span>Настройки приложения</span>${icon('chevron-right')}</a>
     <p class="auth-error" data-logout-error role="alert" hidden></p>
     <button class="logout-button" data-logout>${icon('log-out')} Выйти из аккаунта</button>
-    <p class="demo-notice">Ваши оценки появятся после подключения журнала колледжа.</p></main>`;
+    <p class="demo-notice">Посещаемость доступна в разделе «Успеваемость» после передачи данных администратором. Личные оценки ещё не подключены.</p></main>`;
 }
 
 export function personalGradesMarkup() {
