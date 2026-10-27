@@ -1,0 +1,19 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "npm run build",
+  "installCommand": "npm ci --omit=dev",
+  "regions": ["fra1"],
+  "outputDirectory": "dist",
+  "functions": { "api/index.mjs": { "maxDuration": 30 } },
+  "rewrites": [
+    { "source": "/overrides.json", "destination": "https://wtfhoshi.github.io/tkpst-schedule/overrides.json" },
+    { "source": "/api/:path*", "destination": "/api/index" }
+  ],
+  "headers": [
+    { "source": "/api/:path*", "headers": [{ "key": "Cache-Control", "value": "no-store" }] },
+    { "source": "/sw.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+    { "source": "/overrides.json", "headers": [{ "key": "Cache-Control", "value": "no-store" }] },
+    { "source": "/(.*)", "headers": [{ "key": "X-Content-Type-Options", "value": "nosniff" }, { "key": "Referrer-Policy", "value": "same-origin" }] }
+  ]
+}

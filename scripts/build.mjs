@@ -1,0 +1,10 @@
+import { cp, mkdir, rm } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { basename, dirname, join } from 'node:path';
+const root = fileURLToPath(new URL('../', import.meta.url));
+const out = join(root, 'dist');
+if (dirname(out) !== root.replace(/[\\/]$/, '') || basename(out) !== 'dist') throw new Error('Unsafe output path.');
+await rm(out, { recursive: true, force: true });
+await mkdir(out, { recursive: true });
+for (const entry of ['index.html','style.css','sw.js','manifest.webmanifest','overrides.json','js','icons']) await cp(join(root,'web',entry),join(out,entry),{recursive:true});
+console.log('Static application built in dist/. Private server files excluded.');

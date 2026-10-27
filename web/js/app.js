@@ -7,6 +7,10 @@ import {
   store, cachedDay, loadDay, weeksToSync, prefetch, clearScheduleCache, initOverrides, refreshOverrides,
   getNetwork, liveAt, invalidateLive, departureSource, geoSearch, geoReverse, netHealth, usage, prefetchTimetables,
 } from './data.js';
+import { icon, bottomNav } from './ui.js';
+import { gradesMarkup, subjectMarkup } from './grades-view.js';
+import { auth } from './auth-client.js';
+import { authFormMarkup, signedOutMarkup, profileMarkup, personalGradesMarkup } from './auth-view.js';
 
 const $app = document.getElementById('app');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -29,7 +33,7 @@ const I = {
 // ---------------- Тема ----------------
 
 function applyTheme() {
-  const theme = store.get('theme', 'system');
+  const theme = store.get('theme', 'light');
   document.documentElement.dataset.theme = theme;
   const dark = theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
   document.querySelector('meta[name=theme-color]').content = dark ? '#121410' : '#F6F8F1';
@@ -41,32 +45,49 @@ applyTheme();
 
 let tick = null;        // функция, вызываемая каждую секунду на текущем экране
 let cleanup = null;     // остановка таймеров экрана
-const routes = { '': home, schedule, buses, address, settings };
+const routes = { '': schedule, schedule, buses, address, settings, grades, account, login, register, demo };
+let currentSection = 'schedule';
+let selectedSemester = '2026-1';
+let viewVersion = 0;
 
 function go(path) { location.hash = '#/' + path; }
 window.addEventListener('hashchange', render);
 
 function render() {
+  viewVersion++;
   if (cleanup) { cleanup(); cleanup = null; }
   tick = null;
   const path = location.hash.replace(/^#\/?/, '');
-  (routes[path] || home)();
+  const primary = path.split('/')[0];
+  const demoSubject = path.startsWith('demo/subject/');
+  if (!Object.hasOwn(routes, path) && primary !== 'subject' && !demoSubject) currentSection = 'schedule';
+  if (['schedule', 'grades', 'buses'].includes(primary)) currentSection = primary;
+  if (!path) currentSection = 'schedule';
+  if (['subject', 'account', 'login', 'register', 'demo'].includes(primary)) currentSection = 'grades';
+  if (primary === 'address') currentSection = 'buses';
+  $app.dataset.page = Object.hasOwn(routes, path) || primary === 'subject' || demoSubject ? primary || 'schedule' : 'schedule';
+  if (demoSubject) subject(path.slice('demo/subject/'.length));
+  else if (primary === 'subject') grades();
+  else (Object.hasOwn(routes, path) ? routes[path] : schedule)();
+  document.getElementById('nav').innerHTML = bottomNav(currentSection);
   window.scrollTo(0, 0);
 }
 
 setInterval(() => { if (tick && !document.hidden) tick(); }, 1000);
 
 function topBar(title, subtitle, { back = true, actions = '' } = {}) {
-  return `<header class="bar">
-    ${back ? `<button class="icon" data-back aria-label="Назад">${I.back}</button>` : '<span class="icon-space"></span>'}
-    <div class="bar-title"><div class="t">${esc(title)}</div>${subtitle != null ? `<div class="s" data-sub>${esc(subtitle)}</div>` : ''}</div>
-    <div class="bar-actions">${actions}</div>
+  const isPrimary = ['schedule', 'grades', 'buses'].includes($app.dataset.page) || location.hash === '#/demo';
+  return `<header class="page-header">
+    <div class="brand-row">${!isPrimary && back ? `<button class="back-link" data-back="${location.hash.startsWith('#/demo/subject/') ? 'demo' : currentSection}">${icon('arrow-left')}<span>Назад</span></button>` : '<a class="brand" href="#/schedule">ТКПСТ <span>· ИС-25-3С</span></a>'}
+      <div class="bar-actions">${actions}${isPrimary ? `<a class="icon" href="#/account" aria-label="Личный кабинет">${icon('user-round')}</a><a class="icon" href="#/settings" aria-label="Настройки">${icon('settings')}</a>` : ''}</div>
+    </div>
+    <h1>${esc(title)}</h1>${subtitle != null ? `<p class="page-subtitle" data-sub>${esc(subtitle)}</p>` : ''}
   </header>`;
 }
 
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-back]');
-  if (b) { e.preventDefault(); if (history.length > 1) history.back(); else go(''); }
+  if (b) { e.preventDefault(); go(b.dataset.back || 'schedule'); }
 });
 
 function toast(text) {
@@ -94,31 +115,119 @@ function announcementHtml() {
   return a ? `<div class="announce"><b>Объявление</b><div>${esc(a)}</div></div>` : '';
 }
 
-// ---------------- Главный ----------------
+// ---------------- Личный кабинет ----------------
 
-function home() {
-  const now = T.now();
-  $app.innerHTML = `
-    ${topBar('ТКПСТ', `Тюмень · ${fmt.wdLong(now)}, ${fmt.dMonth(now)} · ${T.hm(now)}`, {
-      back: false, actions: `<button class="icon" data-go="settings" aria-label="Настройки">${I.gear}</button>` })}
-    <main class="home">
-      ${announcementHtml()}
-      <a class="big primary" href="#/schedule">
-        <span class="big-icon">${I.calendar}</span>
-        <span><span class="big-t">Расписание</span><span class="big-s">Пары группы ИС-25-3С</span></span>
-      </a>
-      <a class="big secondary" href="#/buses">
-        <span class="big-icon">${I.bus}</span>
-        <span><span class="big-t">Автобусы</span><span class="big-s">Дом ↔ Луначарского, 19 · онлайн</span></span>
-      </a>
-    </main>`;
-  $app.querySelector('[data-go=settings]').onclick = () => go('settings');
-  tick = () => {
-    const n = T.now();
-    $app.querySelector('[data-sub]').textContent = `Тюмень · ${fmt.wdLong(n)}, ${fmt.dMonth(n)} · ${T.hm(n)}`;
+const authPages = new Set(['grades', 'subject', 'account', 'login', 'register']);
+const currentPath = () => location.hash.replace(/^#\/?/, '').split('/')[0];
+function sessionLoading(title) {
+  $app.innerHTML = topBar(title, null) + '<main class="grades-main"><div class="msg" role="status"><div class="spinner"></div><p>Проверяем вход…</p></div></main>';
+}
+function requireAccount(title) {
+  const state = auth.state();
+  if (state.status === 'loading') { sessionLoading(title); return false; }
+  if (state.user) return true;
+  $app.innerHTML = topBar(title, 'Личные оценки') + signedOutMarkup(state.status === 'unavailable');
+  const retry = $app.querySelector('[data-auth-retry]');
+  if (retry) retry.onclick = async () => { retry.disabled = true; await auth.restore(); if (authPages.has(currentPath())) render(); };
+  return false;
+}
+
+function login() { authPage('login'); }
+function register() { authPage('register'); }
+function authPage(mode) {
+  if (auth.state().status === 'loading') { sessionLoading('Личный кабинет'); return; }
+  if (auth.state().user) { go('account'); return; }
+  $app.innerHTML = topBar(mode === 'register' ? 'Создать аккаунт' : 'Личный кабинет', mode === 'register' ? 'Регистрация' : 'Вход в аккаунт') + authFormMarkup(mode);
+  const form = $app.querySelector('[data-auth-form]');
+  const fieldset = form.querySelector('fieldset');
+  const submit = form.querySelector('[type=submit]');
+  const errorBox = form.querySelector('[role=alert]');
+  const password = form.elements.namedItem('password');
+  const confirm = form.elements.namedItem('confirm');
+  form.querySelectorAll('[data-password-toggle]').forEach(button => {
+    button.onclick = () => {
+      const input = form.elements.namedItem(button.dataset.passwordToggle);
+      const showing = input.type === 'password';
+      input.type = showing ? 'text' : 'password';
+      button.innerHTML = icon(showing ? 'eye-off' : 'eye');
+      button.setAttribute('aria-pressed', String(showing));
+      button.setAttribute('aria-label', `${showing ? 'Скрыть' : 'Показать'} ${button.dataset.passwordToggle === 'confirm' ? 'повтор пароля' : 'пароль'}`);
+    };
+  });
+  form.oninput = () => { if (confirm) confirm.setCustomValidity(''); errorBox.hidden = true; form.querySelectorAll('[aria-invalid]').forEach(input => input.removeAttribute('aria-invalid')); };
+  form.onsubmit = async event => {
+    event.preventDefault();
+    if (fieldset.disabled) return;
+    if (confirm && password.value !== confirm.value) { confirm.setCustomValidity('Пароли не совпадают.'); confirm.reportValidity(); return; }
+    if (!form.reportValidity()) return;
+    const body = { username: form.elements.namedItem('username').value.trim(), password: password.value };
+    if (mode === 'register') body.displayName = form.elements.namedItem('displayName').value.trim();
+    const version = viewVersion;
+    const label = submit.textContent;
+    let focusAfter = null;
+    fieldset.disabled = true; submit.textContent = mode === 'register' ? 'Создаём аккаунт…' : 'Входим…';
+    form.setAttribute('aria-busy', 'true'); errorBox.hidden = true;
+    try {
+      await auth.authenticate(mode, body);
+      form.reset();
+      if (version === viewVersion) go('account');
+      else if (authPages.has(currentPath())) render();
+    } catch (error) {
+      if (version !== viewVersion) return;
+      errorBox.textContent = error.message; errorBox.hidden = false;
+      const field = error.field && form.elements.namedItem(error.field);
+      if (field) field.setAttribute('aria-invalid', 'true');
+      errorBox.setAttribute('tabindex', '-1'); focusAfter = field || errorBox;
+    } finally {
+      fieldset.disabled = false; submit.textContent = label; form.removeAttribute('aria-busy');
+      if (version === viewVersion) focusAfter?.focus();
+    }
   };
-  // Тихо обновляем расписание на две недели и сообщаем об изменениях.
-  prefetch(weeksToSync(now), now).then(notifyChanges);
+}
+
+function account() {
+  if (auth.state().status === 'loading') { sessionLoading('Личный кабинет'); return; }
+  const user = auth.state().user;
+  if (!user) { authPage('login'); return; }
+  $app.innerHTML = topBar('Личный кабинет', 'Профиль') + profileMarkup(user);
+  const button = $app.querySelector('[data-logout]');
+  button.onclick = async () => {
+    const version = viewVersion;
+    const errorBox = $app.querySelector('[data-logout-error]');
+    button.disabled = true; errorBox.hidden = true;
+    try {
+      await auth.logout();
+      if (version === viewVersion) { go('login'); toast('Вы вышли из аккаунта.'); }
+      else if (authPages.has(currentPath())) render();
+    } catch (error) { errorBox.textContent = error.message; errorBox.hidden = false; }
+    finally { button.disabled = false; }
+  };
+}
+
+function grades() {
+  if (!requireAccount('Успеваемость')) return;
+  const version = viewVersion;
+  $app.innerHTML = topBar('Успеваемость', 'Личные оценки') + '<main class="grades-main"><p role="status">Загружаем журнал…</p></main>';
+  auth.grades().then(() => {
+    if (version === viewVersion) $app.innerHTML = topBar('Успеваемость', 'Личные оценки') + personalGradesMarkup();
+  }).catch(error => {
+    if (version !== viewVersion) return;
+    if (error.status === 401) { render(); return; }
+    $app.innerHTML = topBar('Успеваемость', 'Личные оценки') + '<main class="grades-main"><p class="auth-error" role="alert">Не удалось загрузить журнал.</p><button class="btn" data-grades-retry>Повторить</button></main>';
+    $app.querySelector('[data-grades-retry]').onclick = grades;
+  });
+}
+
+// Пример журнала доступен отдельно и никогда не выдаётся за личные оценки.
+function demo() {
+  $app.innerHTML = topBar('Успеваемость', 'Пример журнала · демонстрационные оценки') + gradesMarkup(selectedSemester, 'demo/subject');
+  $app.querySelector('[data-semester]').onchange = e => { selectedSemester = e.target.value; demo(); };
+  const first = $app.querySelector('[data-first-semester]');
+  if (first) first.onclick = () => { selectedSemester = '2026-1'; demo(); };
+}
+
+function subject(id) {
+  $app.innerHTML = topBar('Оценки по предмету', `${selectedSemester === '2026-1' ? '1' : '2'} семестр 2026/27 · пример`) + subjectMarkup(selectedSemester, id);
 }
 
 // ---------------- Расписание ----------------
@@ -162,7 +271,7 @@ function schedule() {
   };
   const onVis = () => { if (!document.hidden) loadSelected(); };
   document.addEventListener('visibilitychange', onVis);
-  cleanup = () => document.removeEventListener('visibilitychange', onVis);
+  cleanup = () => { sched.seq++; document.removeEventListener('visibilitychange', onVis); };
 
   tick();
   loadSelected();
@@ -324,8 +433,6 @@ function renderList(scroll) {
         const at = s.data.savedAt ? T.fromReal(s.data.savedAt) : null;
         parts.push(`<div class="note">Нет сети — показано сохранённое расписание${at ? ` (${fmt.dMon(at)}, ${T.hm(at)})` : ''}</div>`);
       }
-      const ann = announcementHtml();
-      if (ann) parts.unshift(ann);
       const dn = (dayOverride(T.iso(sched.selected)) || {}).note;
       if (dn && dn.trim()) parts.push(`<div class="note">${esc(dn.trim())}</div>`);
       if (isToday) {
@@ -339,6 +446,7 @@ function renderList(scroll) {
       html = parts.join('');
     }
   }
+  html = announcementHtml() + html;
   if (list.dataset.html === html) return;
   list.innerHTML = html;
   list.dataset.html = html;
@@ -439,7 +547,7 @@ function buses() {
   }, 5000);
   const onVis = () => { if (!document.hidden) refreshBus(true); };
   document.addEventListener('visibilitychange', onVis);
-  cleanup = () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVis); };
+  cleanup = () => { bus.seq++; clearInterval(timer); document.removeEventListener('visibilitychange', onVis); };
 }
 
 /** Если выбранное время сегодня уже прошло — значит, имеется в виду завтра. */
@@ -472,7 +580,7 @@ function renderBusHead(home) {
         <button class="${on(w.day === 0)}" data-wday="0">Сегодня</button>
         <button class="${on(w.day === 1)}" data-wday="1">Завтра</button>
       </div>
-      <input class="timein" type="time" data-time value="${w.time}" step="300">
+      <input class="timein" type="time" aria-label="Время поездки" data-time value="${w.time}" step="300">
     </div>` : ''}
     <div class="sorts">
       ${quick ? `<button class="pill quick" data-quick>${esc(quick.label)}</button>` : ''}
@@ -714,7 +822,7 @@ function address() {
     ${topBar('Домашний адрес', null)}
     <main class="list form">
       ${home ? `<p class="muted">Сейчас: ${esc(home.label)}</p>` : ''}
-      <label class="field"><input data-q type="search" placeholder="Улица и дом, например «Широтная 100»" autocomplete="off" enterkeyhint="search"><span class="spinner small" data-qspin hidden></span></label>
+      <label class="field"><span class="sr-only">Домашний адрес</span><input data-q type="search" placeholder="Улица и дом, например «Широтная 100»" autocomplete="off" enterkeyhint="search"><span class="spinner small" data-qspin hidden></span></label>
       <button class="btn outline" data-gps>${I.pin} Я сейчас дома — определить по GPS</button>
       <div data-gpsres></div>
       <div class="error" data-err></div>
@@ -787,7 +895,7 @@ function address() {
 // ---------------- Настройки ----------------
 
 function settings() {
-  const theme = store.get('theme', 'system');
+  const theme = store.get('theme', 'light');
   const home = store.get('home');
   const opt = (v, l) => `<label class="radio"><input type="radio" name="theme" value="${v}" ${theme === v ? 'checked' : ''}><span>${l}</span></label>`;
   $app.innerHTML = `
@@ -832,3 +940,11 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 render();
+auth.restore().then(() => { if (authPages.has(currentPath())) render(); });
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden) return;
+  const before = auth.state();
+  await auth.restore();
+  const after = auth.state();
+  if ((before.user?.id !== after.user?.id || before.status !== after.status) && authPages.has(currentPath())) render();
+});

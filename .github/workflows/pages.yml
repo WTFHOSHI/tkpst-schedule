@@ -24,9 +24,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - name: Tests (логика сайта)
-        run: node --test web/test/*.test.mjs
+          node-version: 24
+      - name: Install dependencies
+        run: npm ci
+      - name: Tests (расписание, ЛК и Postgres)
+        run: npm test
       - name: Check overrides.json
         run: node -e "JSON.parse(require('fs').readFileSync('web/overrides.json','utf8'))"
       - name: Prepare site
@@ -34,7 +36,7 @@ jobs:
           mkdir -p _site
           cp -r web/index.html web/style.css web/sw.js web/manifest.webmanifest web/overrides.json web/js web/icons _site/
           # новая версия кэша офлайн-оболочки на каждую сборку
-          sed -i "s/tkpst-shell-v1/tkpst-shell-${{ github.run_number }}/" _site/sw.js
+          sed -i "s/tkpst-shell-v[0-9]*/tkpst-shell-${{ github.run_number }}/" _site/sw.js
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
