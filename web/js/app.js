@@ -16,6 +16,7 @@ import { attendanceMarkup } from './attendance-view.js';
 
 const $app = document.getElementById('app');
 const staticHosting = location.hostname === 'wtfhoshi.github.io';
+const accountOrigin = 'https://tkpst-account.telling-math.workers.dev';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const WD = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 
@@ -87,7 +88,7 @@ function render() {
   if (['subject', 'account', 'login', 'register', 'demo'].includes(primary)) currentSection = 'grades';
   if (primary === 'address') currentSection = 'buses';
   $app.dataset.page = Object.hasOwn(routes, path) || primary === 'subject' || demoSubject ? primary || 'schedule' : 'schedule';
-  if (staticHosting && authPages.has(primary)) cloudAccount(primary);
+  if (staticHosting && authPages.has(primary)) cloudAccount();
   else if (demoSubject) subject(path.slice('demo/subject/'.length));
   else if (primary === 'subject') grades();
   else (Object.hasOwn(routes, path) ? routes[path] : schedule)();
@@ -141,10 +142,7 @@ function announcementHtml() {
 
 const authPages = new Set(['grades', 'subject', 'account', 'login', 'register']);
 const currentPath = () => location.hash.replace(/^#\/?/, '').split('/')[0];
-function cloudAccount(path) {
-  const section = ['login', 'register', 'grades'].includes(path) ? path : 'account';
-  $app.innerHTML = topBar('Личный кабинет', null) + `<main class="grades-main access-main"><a class="btn auth-submit" href="https://tkpst-schedule.onrender.com/#/${section}">ЛК без VPN</a><a class="btn outline" href="https://tkpst-schedule.vercel.app/#/${section}">ЛК с VPN</a></main>`;
-}
+function cloudAccount() { location.replace(accountOrigin + '/' + (location.hash || '#/account')); }
 function sessionLoading(title) {
   $app.innerHTML = topBar(title, null) + '<main class="grades-main"><div class="msg" role="status"><div class="spinner"></div><p>Проверяем вход…</p></div></main>';
 }

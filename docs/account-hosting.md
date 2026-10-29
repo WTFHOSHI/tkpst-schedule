@@ -1,6 +1,14 @@
-# Account hosting outside Vercel
+# One account address on Cloudflare Workers
 
-Main static site: **https://wtfhoshi.github.io/tkpst-schedule/**. User confirmed it opens with VPN. The account entry offers **https://tkpst-schedule.onrender.com/** without VPN and **https://tkpst-schedule.vercel.app/** with VPN; the user confirmed both routes in the respective network mode. Render service `srv-dbg97mmc6qcc73eo871g`, My Workspace, Free plan, Frankfurt.
+Canonical account URL: **https://tkpst-account.telling-math.workers.dev/**. The public schedule at **https://wtfhoshi.github.io/tkpst-schedule/** redirects account routes there automatically. This is one login and one account UI with and without VPN. The Cloudflare Worker serves static files from `dist/` immediately and forwards only the allowlisted student `/api/*` POST routes to the existing Vercel API. The browser never contacts Vercel directly for account requests. Vercel keeps the existing Neon database, accounts, password hashes and student links. Users must sign in once on the new hostname because secure session cookies are host-scoped.
+
+The Worker checks the exact same-origin `Origin`, rejects cross-site and admin requests, limits JSON bodies to 16 KiB, and forwards only a session cookie to the fixed Vercel origin. Authentication and attendance responses are never cached. The Worker UI reads current schedule overrides from the public GitHub Pages file, which permits cross-origin reads. No database password, Cloudflare token or Neon endpoint is shipped to the browser or committed to Git.
+
+Build with `npm run build`, then deploy with `npx wrangler deploy` after authenticating the Cloudflare account. `wrangler.jsonc` configures static SPA assets and the API Worker. The original Render service remains an alternate deployment; its daytime cron-job.org warmup is not part of the canonical account route and can be disabled after the new address is confirmed. The account is on Cloudflare's Free plan; do not create paid resources.
+
+## Previous Render deployment
+
+Main static site: **https://wtfhoshi.github.io/tkpst-schedule/**. User confirmed it opens with VPN. The former account entry offered **https://tkpst-schedule.onrender.com/** without VPN and **https://tkpst-schedule.vercel.app/** with VPN; the user confirmed both routes in the respective network mode. Render service `srv-dbg97mmc6qcc73eo871g`, My Workspace, Free plan, Frankfurt.
 
 Render runs `node server/hosted.mjs` and serves both `web/` and `/api/*` under the same HTTPS origin. Use only the **Free** plan in the confirmed workspace. `render.yaml` describes the service. No Render database or persistent disk is required.
 
