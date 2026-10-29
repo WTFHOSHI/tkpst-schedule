@@ -143,7 +143,7 @@ const authPages = new Set(['grades', 'subject', 'account', 'login', 'register'])
 const currentPath = () => location.hash.replace(/^#\/?/, '').split('/')[0];
 function cloudAccount(path) {
   const section = ['login', 'register', 'grades'].includes(path) ? path : 'account';
-  $app.innerHTML = topBar('Личный кабинет', null) + `<main class="grades-main access-main">${icon('user-round')}<h2>Личный кабинет</h2><a class="btn auth-submit" href="https://tkpst-schedule.onrender.com/#/${section}">ЛК без VPN</a><a class="btn outline" href="https://tkpst-schedule.vercel.app/#/${section}">ЛК с VPN</a><a class="auth-public-link" href="#/schedule">Расписание</a></main>`;
+  $app.innerHTML = topBar('Личный кабинет', null) + `<main class="grades-main access-main"><a class="btn auth-submit" href="https://tkpst-schedule.onrender.com/#/${section}">ЛК без VPN</a><a class="btn outline" href="https://tkpst-schedule.vercel.app/#/${section}">ЛК с VPN</a></main>`;
 }
 function sessionLoading(title) {
   $app.innerHTML = topBar(title, null) + '<main class="grades-main"><div class="msg" role="status"><div class="spinner"></div><p>Проверяем вход…</p></div></main>';
