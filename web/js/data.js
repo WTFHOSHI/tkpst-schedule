@@ -48,18 +48,27 @@ export async function refreshOverrides() {
 
 // ---------------- Расписание пар ----------------
 
-const SCHED = 'https://api.thisishyum.ru/schedule_api/tyumen';
+const DIRECT_SCHED = 'https://api.thisishyum.ru/schedule_api/tyumen';
+const PROXY_SCHED = 'https://tkpst-account.telling-math.workers.dev/schedule_api/tyumen';
 const GROUP_NAME = 'ИС-25-3С';
 const FALLBACK_GROUP = 196; // проверено 28.09.2026: ИС-25-3С, «Луначарского 2 курс»
 const KEEP_DAYS = 14;
 const norm = (s) => s.replace(/\s/g, '').toUpperCase();
+
+async function scheduleJson(path) {
+  if (location.hostname === 'wtfhoshi.github.io' || location.hostname.endsWith('.workers.dev')) {
+    try { return await getJson(PROXY_SCHED + path, 10000); }
+    catch { /* The original public API is still a fallback. */ }
+  }
+  return getJson(DIRECT_SCHED + path);
+}
 
 async function groupId() {
   const saved = store.get('group_id');
   if (saved) return saved;
   let id = FALLBACK_GROUP;
   try {
-    const groups = await getJson(`${SCHED}/colleges/1/groups`);
+    const groups = await scheduleJson('/colleges/1/groups');
     const g = groups.find((x) => norm(x.name) === norm(GROUP_NAME));
     if (g) id = g.studentGroupId;
   } catch { /* fallback */ }
@@ -77,12 +86,12 @@ export function cachedDay(day) {
 export async function loadDay(day) {
   try {
     const gid = await groupId();
-    const body = await getJson(`${SCHED}/groups/${gid}/schedules?date=${T.iso(day)}`);
+    const body = await scheduleJson(`/groups/${gid}/schedules?date=${T.iso(day)}`);
     const lessons = parseLessons(body);
     let notPublished = false;
     if (!lessons.length) {
       try {
-        const last = await getJson(`${SCHED}/groups/${gid}/schedules/last`);
+        const last = await scheduleJson(`/groups/${gid}/schedules/last`);
         if (last && last.date) notPublished = T.dayStart(day) > T.parseIso(last.date);
       } catch { /* ignore */ }
     }

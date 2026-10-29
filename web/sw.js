@@ -1,5 +1,5 @@
 // Офлайн: оболочка сайта из кэша; личные данные API — всегда из сети.
-const CACHE = 'tkpst-shell-v8';
+const CACHE = 'tkpst-shell-v9';
 const SHELL = ['./', 'index.html', 'style.css', 'js/app.js', 'js/core.js', 'js/data.js',
   'js/ui.js', 'js/grades.js', 'js/grades-view.js', 'js/attendance.js', 'js/attendance-view.js',
   'js/auth-client.js', 'js/auth-view.js', 'icons/lucide/eye.svg', 'icons/lucide/eye-off.svg',

@@ -42,3 +42,28 @@ test('static pages stay on the Worker and health is independent of the upstream'
   assert.equal(health.status, 200);
   assert.deepEqual(await health.json(), { status: 'ok' });
 });
+
+test('public schedule proxy returns a dated lesson without forwarding student cookies', async t => {
+  const original = globalThis.fetch;
+  t.after(() => { globalThis.fetch = original; });
+  globalThis.fetch = async (url, init) => {
+    assert.equal(url, 'https://api.thisishyum.ru/schedule_api/tyumen/groups/196/schedules?date=2026-10-15');
+    assert.equal(init.headers?.get?.('Cookie') ?? null, null);
+    assert.equal(init.redirect, 'manual');
+    return Response.json({ lessons: [{ title: 'История', order: 2 }] });
+  };
+  const response = await gateway.fetch(new Request(origin + '/schedule_api/tyumen/groups/196/schedules?date=2026-10-15', {
+    headers: { Origin: 'https://wtfhoshi.github.io', Cookie: '__Host-tkpst_session=secret' },
+  }), { ASSETS: assets });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('Content-Type') || '', /application\/json/);
+  assert.equal(response.headers.get('Access-Control-Allow-Origin'), 'https://wtfhoshi.github.io');
+  assert.equal((await response.json()).lessons[0].title, 'История');
+});
+
+test('schedule proxy rejects unknown paths and methods', async () => {
+  const unknown = await gateway.fetch(new Request(origin + '/schedule_api/tyumen/groups/not-a-number/schedules?date=2026-10-15'), { ASSETS: assets });
+  assert.equal(unknown.status, 404);
+  const post = await gateway.fetch(new Request(origin + '/schedule_api/tyumen/groups/196/schedules?date=2026-10-15', { method: 'POST' }), { ASSETS: assets });
+  assert.equal(post.status, 405);
+});
