@@ -35,7 +35,10 @@ export function initOverrides() { setOverrides(store.get('overrides')); }
 /** Скачать свежие изменения. true — что-то поменялось. */
 export async function refreshOverrides() {
   try {
-    const j = await getJson(`overrides.json?t=${Date.now()}`, 8000);
+    const overridesUrl = location.hostname.endsWith('.workers.dev')
+      ? 'https://wtfhoshi.github.io/tkpst-schedule/overrides.json'
+      : 'overrides.json';
+    const j = await getJson(`${overridesUrl}?t=${Date.now()}`, 8000);
     if (!j || typeof j !== 'object') return false;
     const changed = JSON.stringify(j) !== JSON.stringify(store.get('overrides'));
     if (changed) { store.set('overrides', j); setOverrides(j); }
