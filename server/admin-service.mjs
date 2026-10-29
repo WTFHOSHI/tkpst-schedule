@@ -6,7 +6,8 @@ import { directoryStudent } from './directory-store.mjs';
 const derive = promisify(pbkdf2);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const vaultURL = 'https://wtfhoshi.github.io/tkpst-admin/vault.json';
-const ttl = 24 * 3600_000; // Same maximum lifetime as the existing admin-panel session.
+// A zero expiry means no scheduled expiration. Logout and vault rotation still revoke access.
+const persistentExpiry = 0;
 const unauthorized = () => new HttpError(401, 'Нужен пароль администратора. Войдите заново.');
 function decrypt(key, box, aad) {
   if (box?.v !== 1 || typeof box.iv !== 'string' || typeof box.ct !== 'string') throw new Error('Invalid encrypted object');
@@ -67,8 +68,8 @@ export function createAdminService({ store, fetchImpl = fetch, now = Date.now })
       } catch { throw unauthorized(); }
       finally { deriving--; }
       const token = randomBytes(32).toString('base64url');
-      await store.createAdminSession(hash(token), current.fingerprint, now() + ttl, now());
-      return { token, expiresAt: now() + ttl };
+      await store.createAdminSession(hash(token), current.fingerprint, persistentExpiry, now());
+      return { token, expiresAt: persistentExpiry };
     },
     async authorize(token) {
       if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) throw unauthorized();

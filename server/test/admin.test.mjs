@@ -80,7 +80,7 @@ test('admin: explicit unique links affect only the linked student, unlink/withdr
   f.data.config.courses[2].students[0].to = '2020-01-01'; await f.login();
   assert.equal((await account(a)).verifiedStudent, false);
   f.advance(25 * 3600_000);
-  assert.equal((await f.request('/api/admin/users', {}, token)).status, 401);
+  assert.equal((await f.request('/api/admin/users', {}, token)).status, 200, 'admin session has no daily expiry');
 });
 
 test('admin: exact origins, preflight and durable login throttling', async t => {
@@ -97,7 +97,7 @@ test('admin: password login works before a student directory is created', async 
   const data = await (await f.request('/api/admin/users', {}, token)).json();
   assert.equal(data.students.length, 0);
 });
-test('admin: shared one-day session refreshes directory without another password; invalid sync is atomic', async t => {
+test('admin: persistent session refreshes directory without another password; invalid sync is atomic', async t => {
   const f = await fixture(t), token = await f.login();
   f.advance(3600_000);
   assert.equal((await f.request('/api/admin/users', {}, token)).status, 200);
@@ -150,4 +150,17 @@ test('admin: deleted student tombstones leave historical source records but unli
   const list = await (await f.request('/api/admin/users', {}, token)).json();
   assert.ok(!list.students.some(s => s.id === 's1'));
   assert.equal(list.users.find(u => u.id === user.id).link, undefined);
+});
+
+test('admin: permanent bearer survives years and new logins, but explicit logout revokes it', async t => {
+  const f = await fixture(t);
+  const response = await f.request('/api/admin/login', { password });
+  const credentials = await response.json();
+  assert.equal(credentials.expiresAt, 0, 'zero explicitly means no scheduled expiry');
+  f.advance(5 * 365 * 864e5);
+  const second = await f.rawLogin();
+  assert.equal((await f.request('/api/admin/users', {}, credentials.token)).status, 200);
+  assert.equal((await f.request('/api/admin/logout', {}, credentials.token)).status, 204);
+  assert.equal((await f.request('/api/admin/users', {}, credentials.token)).status, 401);
+  assert.equal((await f.request('/api/admin/users', {}, second)).status, 200);
 });
