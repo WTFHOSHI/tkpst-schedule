@@ -388,6 +388,7 @@ h1, h2, h3, p { overflow-wrap: anywhere; }
 .phase-past { opacity: 1; }
 .phase-past .num b, .phase-past .time { color: var(--muted); }
 .phase-now.pair { border: 1px solid var(--primary); }
+.pair.phase-future, .pair.phase-upcoming { border: 1px solid var(--outline); }
 .brk { margin: 0 12px; border: 0; padding: 10px 8px; }
 .bushead { padding: 0 20px 18px; gap: 12px; }
 .seg button { min-height: 44px; }

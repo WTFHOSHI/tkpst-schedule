@@ -476,8 +476,9 @@ function msg(title, text, action) {
   return `<div class="msg"><h2>${esc(title)}</h2><p>${esc(text)}</p>${action || ''}</div>`;
 }
 
-function phaseOf(e, isToday, nowMin) {
-  if (!isToday) return 'other';
+function phaseOf(e, selectedDay, today, nowMin) {
+  if (selectedDay > today) return 'upcoming';
+  if (selectedDay < today) return 'other';
   if (nowMin >= e.end) return 'past';
   if (nowMin >= e.start) return 'now';
   return 'future';
@@ -569,7 +570,7 @@ function renderList(scroll) {
             : `Занятия закончатся через ${formatLeft(secsTo(last, nowMin))} (в ${T.hmMin(last)})`;
         parts.push(`<div class="summary">${t}</div>`);
       }
-      entries.forEach((e) => parts.push(entryHtml(e, phaseOf(e, isToday, nowMin), nowMin)));
+      entries.forEach((e) => parts.push(entryHtml(e, phaseOf(e, sched.selected, today, nowMin), nowMin)));
       html = parts.join('');
     }
   }
