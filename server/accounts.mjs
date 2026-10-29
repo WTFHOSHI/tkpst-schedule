@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { hashPassword, verifyPassword } from './password.mjs';
 import { directoryStudent } from './directory-store.mjs';
+import { attendanceMonth, attendanceProjection } from './attendance-store.mjs';
 
 export class HttpError extends Error {
   constructor(status, message, field) { super(message); this.status = status; this.field = field; }
@@ -61,6 +62,16 @@ export async function createAccounts({ dbPath, store, now = Date.now, sessionTtl
       if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
       const row = await persistence.sessionUser(tokenHash(token), now());
       return publicUser(row, row ? directoryStudent(await persistence.directoryForUser(row.id), now()) : null);
+    },
+    async attendance(token, body) {
+      if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) throw new HttpError(401, 'Войдите в личный кабинет.');
+      const time = now(), user = await persistence.sessionUser(tokenHash(token), time);
+      if (!user) throw new HttpError(401, 'Войдите в личный кабинет.');
+      const { month, start, end } = attendanceMonth(body, time);
+      const parts = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Yekaterinburg', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(time));
+      const part = type => parts.find(x => x.type === type).value;
+      const rows = await persistence.attendanceForUser(user.id, `${part('year')}-${part('month')}-${part('day')}`, start, end);
+      return attendanceProjection(rows, month, start, end);
     },
     async logout(token) { if (token) await persistence.deleteSession(tokenHash(token)); },
     consumeRateLimit: (key, limit, window, time = now()) => persistence.consumeRateLimit(tokenHash(key), limit, window, time),

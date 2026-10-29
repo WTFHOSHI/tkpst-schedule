@@ -2,6 +2,7 @@ import { createHash, randomBytes, pbkdf2, createDecipheriv } from 'node:crypto';
 import { promisify } from 'node:util';
 import { HttpError } from './accounts.mjs';
 import { directoryStudent } from './directory-store.mjs';
+import { attendanceWeek, validateAttendance } from './attendance-store.mjs';
 
 const derive = promisify(pbkdf2);
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -55,28 +56,54 @@ export function createAdminService({ store, fetchImpl = fetch, now = Date.now })
       return { value, fingerprint: hash(JSON.stringify(value)) };
     } catch { throw new HttpError(502, 'Не удалось проверить сейф админки. Повторите позже.'); }
   }
+  async function loginRole(body, attendanceOnly) {
+    const role = attendanceOnly ? body?.role : 'admin';
+    if (!['admin', 'kurator', 'starosta'].includes(role) || typeof body?.password !== 'string' || !body.password || body.password.length > 256) throw unauthorized();
+    const current = await vault();
+    if (deriving >= 4) throw new HttpError(429, 'Сервер занят. Повторите позже.');
+    deriving++;
+    try {
+      const key = await derive(body.password, Buffer.from(current.value.salt, 'base64'), current.value.iter, 32, 'sha256');
+      let secret;
+      try { secret = decrypt(key, current.value.roles[role], 'vault:' + role); } finally { key.fill(0); }
+      if (secret.role !== role || typeof secret.gh !== 'string' || typeof secret.dk !== 'string' || Buffer.from(secret.dk, 'base64').length !== 32) throw unauthorized();
+    } catch { throw unauthorized(); }
+    finally { deriving--; }
+    const token = randomBytes(32).toString('base64url'), time = now(), expiresAt = role === 'kurator' ? time + 24 * 3600_000 : persistentExpiry;
+    if (attendanceOnly) await store.createAttendanceWriterSession(hash(token), current.fingerprint, role, expiresAt, time);
+    else await store.createAdminSession(hash(token), current.fingerprint, expiresAt, time);
+    return { token, expiresAt };
+  }
+  async function authorize(token, attendanceOnly = false) {
+    if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) throw unauthorized();
+    const tokenHash = hash(token);
+    const adminSession = await store.adminSession(tokenHash, now());
+    const writer = !adminSession && attendanceOnly ? await store.attendanceWriterSession(tokenHash, now()) : null;
+    const session = adminSession || writer;
+    if (!session) throw unauthorized();
+    if (session.vault_hash !== (await vault()).fingerprint) {
+      if (writer) await store.deleteAttendanceWriterSession(tokenHash);
+      else await store.deleteAdminSession(tokenHash);
+      throw unauthorized();
+    }
+  }
   return {
-    async login(body) {
-      if (typeof body?.password !== 'string' || !body.password || body.password.length > 256) throw unauthorized();
-      const current = await vault(); let secret;
-      if (deriving >= 4) throw new HttpError(429, 'Сервер занят. Повторите позже.');
-      deriving++;
-      try {
-        const key = await derive(body.password, Buffer.from(current.value.salt, 'base64'), current.value.iter, 32, 'sha256');
-        try { secret = decrypt(key, current.value.roles.admin, 'vault:admin'); } finally { key.fill(0); }
-        if (secret.role !== 'admin' || typeof secret.gh !== 'string' || typeof secret.dk !== 'string' || Buffer.from(secret.dk, 'base64').length !== 32) throw unauthorized();
-      } catch { throw unauthorized(); }
-      finally { deriving--; }
-      const token = randomBytes(32).toString('base64url');
-      await store.createAdminSession(hash(token), current.fingerprint, persistentExpiry, now());
-      return { token, expiresAt: persistentExpiry };
+    login: body => loginRole(body, false),
+    loginAttendance: body => loginRole(body, true),
+    authorize: token => authorize(token),
+    authorizeAttendance: token => authorize(token, true),
+    async beginAttendance(body, token) {
+      const { course, monday } = attendanceWeek(body), ticket = randomBytes(32).toString('base64url');
+      await store.reserveAttendanceTicket(hash(ticket), hash(token), course, monday, now());
+      return { ticket };
+
     },
-    async authorize(token) {
-      if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) throw unauthorized();
-      const session = await store.adminSession(hash(token), now());
-      if (!session) throw unauthorized();
-      if (session.vault_hash !== (await vault()).fingerprint) { await store.deleteAdminSession(hash(token)); throw unauthorized(); }
+    async syncAttendance(body, token) {
+      const scope = validateAttendance(body);
+      if (typeof body?.ticket !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(body.ticket) || !await store.replaceAttendance(hash(body.ticket), hash(token), scope, now())) throw new HttpError(409, 'Обновление устарело. Повторите загрузку посещаемости.');
+      return { ok: true, syncedAt: now() };
     },
+    logoutAttendance: token => store.deleteAttendanceWriterSession(hash(token)),
     async users(body) {
       const search = typeof body?.search === 'string' ? body.search.trim() : '';
       const offset = body?.offset ?? 0;

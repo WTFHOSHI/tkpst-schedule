@@ -19,10 +19,11 @@
 - [x] Commit and push the hosting branch; deploy in the confirmed workspace with the existing database secret.
 - [x] Verify registration, session restore, profile, wrong password, logout, private file denial and origin isolation using synthetic data.
 - [x] Verify real browser cookies and refresh; user confirmed the actual Render login page works without VPN.
-- [ ] Update the Pages link only after successful checks; merge and push without overwriting concurrent work.
+- [x] Update the Pages link only after successful checks; merge and push without overwriting concurrent work.
 
 ## Ledger
 - Probe: Neon accounts function returns a fixed health response only; user reports it is unavailable without VPN. No account APIs or secrets deployed there.
 - Render connected; user explicitly selected My Workspace and free service. Official express.onrender.com demo works without VPN for the user.
 - Actual Render login also confirmed without VPN. Real-browser synthetic registration, refresh and logout passed. Independent migration review found no actionable defects.
 - Ruling: retain the Render service's explicit hosting branch; connector cannot edit it and the dashboard needs interactive sign-in. Document future branch synchronization rather than inventing an update capability.
+- Completed: source merged with concurrent admin work, 56 tests passed, both main branches published, live Pages account link and administrator API/CSP point to Render. Browser proof is `design/qa/deployment/render-login.png`.

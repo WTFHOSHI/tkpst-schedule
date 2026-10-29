@@ -10,7 +10,9 @@ import {
 import { icon, bottomNav } from './ui.js';
 import { gradesMarkup, subjectMarkup } from './grades-view.js';
 import { auth } from './auth-client.js';
-import { authFormMarkup, signedOutMarkup, profileMarkup, personalGradesMarkup } from './auth-view.js';
+import { authFormMarkup, signedOutMarkup, profileMarkup } from './auth-view.js';
+import { attendanceModel, currentMonth, shiftMonth, subjectTitlesForDay, validMonth } from './attendance.js';
+import { attendanceMarkup } from './attendance-view.js';
 
 const $app = document.getElementById('app');
 const staticHosting = location.hostname === 'wtfhoshi.github.io';
@@ -33,11 +35,27 @@ const I = {
 
 // ---------------- Тема ----------------
 
+const paletteOptions = [
+  ['forest', 'Зелёная', '#4F6F2F'],
+  ['ocean', 'Синяя', '#285A91'],
+  ['violet', 'Лиловая', '#6A4EA3'],
+  ['sand', 'Тёплая', '#8B5319'],
+  ['mono', 'Чёрно-белая', 'linear-gradient(90deg, #161616 50%, #fff 50%)'],
+];
+const paletteNames = new Set(paletteOptions.map(([name]) => name));
+const themeModes = new Set(['system', 'light', 'dark']);
+
 function applyTheme() {
-  const theme = store.get('theme', 'light');
-  document.documentElement.dataset.theme = theme;
+  const savedTheme = store.get('theme', 'light');
+  const theme = themeModes.has(savedTheme) ? savedTheme : 'light';
+  const savedPalette = store.get('palette', 'forest');
+  const palette = paletteNames.has(savedPalette) ? savedPalette : 'forest';
+  const root = document.documentElement;
+  root.dataset.theme = theme;
+  root.dataset.palette = palette;
   const dark = theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.querySelector('meta[name=theme-color]').content = dark ? '#121410' : '#F6F8F1';
+  root.dataset.appearance = dark ? 'dark' : 'light';
+  document.querySelector('meta[name=theme-color]').content = getComputedStyle(root).getPropertyValue('--bg').trim();
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
 applyTheme();
@@ -49,6 +67,8 @@ let cleanup = null;     // остановка таймеров экрана
 const routes = { '': schedule, schedule, buses, address, settings, grades, account, login, register, demo };
 let currentSection = 'schedule';
 let selectedSemester = '2026-1';
+let selectedAttendanceMonth = currentMonth();
+let selectedProgressTab = 'attendance';
 let viewVersion = 0;
 
 function go(path) { location.hash = '#/' + path; }
@@ -123,7 +143,7 @@ const authPages = new Set(['grades', 'subject', 'account', 'login', 'register'])
 const currentPath = () => location.hash.replace(/^#\/?/, '').split('/')[0];
 function cloudAccount(path) {
   const section = ['login', 'register', 'grades'].includes(path) ? path : 'account';
-  $app.innerHTML = topBar('Личный кабинет', 'Вход и личные данные') + `<main class="grades-main access-main">${icon('user-round')}<h2>Личный кабинет</h2><p>Войдите или создайте аккаунт по ссылке ниже. Ваш прежний логин и пароль сохраняются.</p><a class="btn auth-submit" href="https://tkpst-schedule.onrender.com/#/${section}">Открыть личный кабинет</a><a class="auth-public-link" href="#/schedule">Вернуться к расписанию</a><a class="auth-public-link" href="#/demo">Посмотреть пример журнала</a></main>`;
+  $app.innerHTML = topBar('Личный кабинет', null) + `<main class="grades-main access-main"><a class="btn auth-submit" href="https://tkpst-schedule.onrender.com/#/${section}">ЛК без VPN</a><a class="btn outline" href="https://tkpst-schedule.vercel.app/#/${section}">ЛК с VPN</a></main>`;
 }
 function sessionLoading(title) {
   $app.innerHTML = topBar(title, null) + '<main class="grades-main"><div class="msg" role="status"><div class="spinner"></div><p>Проверяем вход…</p></div></main>';
@@ -132,7 +152,7 @@ function requireAccount(title) {
   const state = auth.state();
   if (state.status === 'loading') { sessionLoading(title); return false; }
   if (state.user) return true;
-  $app.innerHTML = topBar(title, 'Личные оценки') + signedOutMarkup(state.status === 'unavailable');
+  $app.innerHTML = topBar(title, 'Посещаемость и оценки') + signedOutMarkup(state.status === 'unavailable');
   const retry = $app.querySelector('[data-auth-retry]');
   if (retry) retry.onclick = async () => { retry.disabled = true; await auth.restore(); if (authPages.has(currentPath())) render(); };
   return false;
@@ -141,7 +161,6 @@ function requireAccount(title) {
 function login() { authPage('login'); }
 function register() { authPage('register'); }
 function authPage(mode) {
-  if (auth.state().status === 'loading') { sessionLoading('Личный кабинет'); return; }
   if (auth.state().user) { go('account'); return; }
   $app.innerHTML = topBar(mode === 'register' ? 'Создать аккаунт' : 'Личный кабинет', mode === 'register' ? 'Регистрация' : 'Вход в аккаунт') + authFormMarkup(mode);
   const form = $app.querySelector('[data-auth-form]');
@@ -212,16 +231,118 @@ function account() {
 
 function grades() {
   if (!requireAccount('Успеваемость')) return;
-  const version = viewVersion;
-  $app.innerHTML = topBar('Успеваемость', 'Личные оценки') + '<main class="grades-main"><p role="status">Загружаем журнал…</p></main>';
-  auth.grades().then(() => {
-    if (version === viewVersion) $app.innerHTML = topBar('Успеваемость', 'Личные оценки') + personalGradesMarkup();
-  }).catch(error => {
-    if (version !== viewVersion) return;
-    if (error.status === 401) { render(); return; }
-    $app.innerHTML = topBar('Успеваемость', 'Личные оценки') + '<main class="grades-main"><p class="auth-error" role="alert">Не удалось загрузить журнал.</p><button class="btn" data-grades-retry>Повторить</button></main>';
-    $app.querySelector('[data-grades-retry]').onclick = grades;
-  });
+  const version = ++viewVersion;
+  const month = selectedAttendanceMonth;
+  const user = auth.state().user;
+  let subjects = {};
+  let subjectsPending = false;
+  const active = () => version === viewVersion && month === selectedAttendanceMonth && auth.state().user === user;
+  const paint = state => {
+    const focused = ['data-attendance-prev', 'data-attendance-next', 'data-attendance-month', 'data-attendance-retry'].find(attr => document.activeElement?.hasAttribute(attr));
+    const focusedTab = document.activeElement?.dataset.progressTab;
+    $app.innerHTML = topBar('Успеваемость', null) + attendanceMarkup({ month, tab: selectedProgressTab, subjects, subjectsPending, ...state });
+    $app.querySelectorAll('[data-progress-tab]').forEach(button => {
+      button.onclick = () => {
+        if (selectedProgressTab === button.dataset.progressTab) return;
+        selectedProgressTab = button.dataset.progressTab;
+        render();
+        $app.querySelector(`[data-progress-tab="${selectedProgressTab}"]`)?.focus({ preventScroll: true });
+      };
+      button.onkeydown = event => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        $app.querySelector(`[data-progress-tab="${button.dataset.progressTab === 'grades' ? 'attendance' : 'grades'}"]`)?.click();
+      };
+    });
+    if (selectedProgressTab === 'grades') return;
+    $app.querySelector('[data-attendance-prev]').onclick = () => selectMonth(shiftMonth(month, -1));
+    $app.querySelector('[data-attendance-next]').onclick = () => selectMonth(shiftMonth(month, 1));
+    const input = $app.querySelector('[data-attendance-month]');
+    input.onchange = () => {
+      if (!validMonth(input.value)) { input.reportValidity(); input.value = month; return; }
+      selectMonth(input.value);
+    };
+    const retry = $app.querySelector('[data-attendance-retry]');
+    if (retry) retry.onclick = () => load();
+    if (focused) $app.querySelector(`[${focused}]`)?.focus({ preventScroll: true });
+    else if (focusedTab) $app.querySelector(`[data-progress-tab="${focusedTab}"]`)?.focus({ preventScroll: true });
+  };
+  const selectMonth = next => {
+    if (next === selectedAttendanceMonth) return;
+    selectedAttendanceMonth = next;
+    render();
+  };
+  if (selectedProgressTab === 'grades') { paint({ kind: 'ready' }); return; }
+  let currentData = null;
+  let fingerprint = null;
+  let refreshError = false;
+  let inFlight = false;
+  let lastAttempt = 0;
+  const loadTitles = async (dates, expectedFingerprint) => {
+    await refreshOverrides();
+    const titles = {};
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(3, dates.length) }, async () => {
+      while (next < dates.length) {
+        const date = dates[next++];
+        try {
+          const day = await loadDay(T.parseIso(date));
+          Object.assign(titles, subjectTitlesForDay(date, day.lessons));
+        } catch { /* Для пары без доступного расписания останется номер. */ }
+      }
+    }));
+    if (!active() || fingerprint !== expectedFingerprint) return;
+    subjects = titles;
+    subjectsPending = false;
+    paint({ kind: 'ready', data: currentData, refreshError });
+  };
+  const load = async () => {
+    if (!active() || inFlight) return;
+    inFlight = true;
+    lastAttempt = Date.now();
+    try {
+      const data = await auth.attendance(month);
+      if (!active()) return;
+      const nextFingerprint = JSON.stringify(data);
+      if (fingerprint !== nextFingerprint || refreshError) {
+        currentData = data;
+        const changed = fingerprint !== nextFingerprint;
+        fingerprint = nextFingerprint;
+        refreshError = false;
+        if (changed) {
+          const group = user.student?.groupName?.replace(/\s+/g, '').toUpperCase();
+          const days = group === 'ИС-25-3С' ? attendanceModel(data, month).days.filter(day => day.records.some(record => record.status !== 'P')).map(day => day.date) : [];
+          subjects = {};
+          for (const date of days) {
+            const cached = cachedDay(T.parseIso(date));
+            try { if (cached) Object.assign(subjects, subjectTitlesForDay(date, cached.lessons)); }
+            catch { /* Повреждённый кэш не мешает загрузить свежее расписание. */ }
+          }
+          subjectsPending = days.length > 0;
+          if (days.length) void loadTitles(days, nextFingerprint);
+        }
+        paint({ kind: 'ready', data });
+      }
+    } catch (error) {
+      if (version !== viewVersion || month !== selectedAttendanceMonth) return;
+      if (error.status === 401) { render(); return; }
+      if (!active()) return;
+      if (currentData) {
+        if (!refreshError) { refreshError = true; paint({ kind: 'ready', data: currentData, refreshError: true }); }
+      } else paint({ kind: 'error', error: error.message });
+    } finally { inFlight = false; }
+  };
+  paint({ kind: 'loading' });
+  const onReturn = () => { if (!document.hidden && Date.now() - lastAttempt >= 15_000) load(); };
+  const timer = setInterval(() => { if (!document.hidden) load(); }, 60_000);
+  document.addEventListener('visibilitychange', onReturn);
+  window.addEventListener('focus', onReturn);
+  cleanup = () => {
+    clearInterval(timer);
+    document.removeEventListener('visibilitychange', onReturn);
+    window.removeEventListener('focus', onReturn);
+  };
+  load();
 }
 
 // Пример журнала доступен отдельно и никогда не выдаётся за личные оценки.
@@ -355,8 +476,9 @@ function msg(title, text, action) {
   return `<div class="msg"><h2>${esc(title)}</h2><p>${esc(text)}</p>${action || ''}</div>`;
 }
 
-function phaseOf(e, isToday, nowMin) {
-  if (!isToday) return 'other';
+function phaseOf(e, selectedDay, today, nowMin) {
+  if (selectedDay > today) return 'upcoming';
+  if (selectedDay < today) return 'other';
   if (nowMin >= e.end) return 'past';
   if (nowMin >= e.start) return 'now';
   return 'future';
@@ -448,7 +570,7 @@ function renderList(scroll) {
             : `Занятия закончатся через ${formatLeft(secsTo(last, nowMin))} (в ${T.hmMin(last)})`;
         parts.push(`<div class="summary">${t}</div>`);
       }
-      entries.forEach((e) => parts.push(entryHtml(e, phaseOf(e, isToday, nowMin), nowMin)));
+      entries.forEach((e) => parts.push(entryHtml(e, phaseOf(e, sched.selected, today, nowMin), nowMin)));
       html = parts.join('');
     }
   }
@@ -901,28 +1023,33 @@ function address() {
 // ---------------- Настройки ----------------
 
 function settings() {
-  const theme = store.get('theme', 'light');
+  const savedTheme = store.get('theme', 'light');
+  const theme = themeModes.has(savedTheme) ? savedTheme : 'light';
+  const savedPalette = store.get('palette', 'forest');
+  const palette = paletteNames.has(savedPalette) ? savedPalette : 'forest';
   const home = store.get('home');
   const opt = (v, l) => `<label class="radio"><input type="radio" name="theme" value="${v}" ${theme === v ? 'checked' : ''}><span>${l}</span></label>`;
+  const color = ([key, label, swatch]) => `<label class="theme-choice"><input type="radio" name="palette" value="${key}" ${palette === key ? 'checked' : ''}><span class="theme-swatch" style="--swatch:${swatch}" aria-hidden="true"></span><span>${label}</span></label>`;
   $app.innerHTML = `
     ${topBar('Настройки', null)}
     <main class="list form">
-      <h3 class="section">Тема</h3>
+      <h3 class="section">Цветовая тема</h3>
+      <div class="theme-grid" role="radiogroup" aria-label="Цветовая тема">${paletteOptions.map(color).join('')}</div>
+      <h3 class="section">Режим</h3>
       <div class="card">${opt('system', 'Как в системе')}${opt('light', 'Светлая')}${opt('dark', 'Тёмная')}</div>
       <h3 class="section">Расписание</h3>
       <div class="card">
-        <div>Группа: ИС-25-3С (ТКПСТ, Луначарского)</div>
-        <p class="muted small">Время везде считается по Тюмени (UTC+5). Звонки — по официальному расписанию звонков, предметы, кабинеты и преподаватели — из OpenScheduleApi. Об изменениях расписание сообщит при открытии сайта.</p>
+        <div>Группа ИС-25-3С · Луначарского</div>
         <button class="btn outline" data-clear>Очистить сохранённое расписание</button>
       </div>
       <h3 class="section">Автобусы</h3>
       <div class="card">
         <div>Домашний адрес: ${esc(home ? home.label : 'не указан')}</div>
-        <p class="muted small">Колледж: Луначарского, 19. Данные об автобусах — Тюменьгортранс (онлайн по GPS).</p>
         <button class="btn outline" data-addr>${home ? 'Изменить' : 'Указать'} домашний адрес</button>
       </div>
     </main>`;
   $app.querySelectorAll('input[name=theme]').forEach((r) => { r.onchange = () => { store.set('theme', r.value); applyTheme(); }; });
+  $app.querySelectorAll('input[name=palette]').forEach((r) => { r.onchange = () => { store.set('palette', r.value); applyTheme(); }; });
   $app.querySelector('[data-clear]').onclick = (e) => { clearScheduleCache(); e.target.textContent = 'Очищено'; e.target.disabled = true; };
   $app.querySelector('[data-addr]').onclick = () => go('address');
 }
@@ -946,11 +1073,19 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 render();
-if (!staticHosting) auth.restore().then(() => { if (authPages.has(currentPath())) render(); });
+if (!staticHosting) auth.restore().then(() => {
+  const path = currentPath();
+  if (!authPages.has(path)) return;
+  // Keep text already entered in the login form when a background session check ends.
+  if ((path === 'login' || path === 'register') && !auth.state().user) return;
+  render();
+});
 document.addEventListener('visibilitychange', async () => {
   if (document.hidden || staticHosting) return;
   const before = auth.state();
   await auth.restore();
   const after = auth.state();
-  if ((before.user?.id !== after.user?.id || before.status !== after.status) && authPages.has(currentPath())) render();
+  const path = currentPath();
+  if ((before.user?.id !== after.user?.id || before.status !== after.status) && authPages.has(path)
+    && (path !== 'login' && path !== 'register' || after.user)) render();
 });

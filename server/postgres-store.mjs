@@ -1,4 +1,5 @@
 import { directorySchema, createDirectoryStore } from './directory-store.mjs';
+import { attendanceSchema, createAttendanceStore } from './attendance-store.mjs';
 export const schemaStatements = [
   'CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, password_hash TEXT NOT NULL, created_at BIGINT NOT NULL)',
   'CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires_at BIGINT NOT NULL)',
@@ -6,6 +7,7 @@ export const schemaStatements = [
   'CREATE TABLE IF NOT EXISTS auth_rate_limits (bucket TEXT PRIMARY KEY, count INTEGER NOT NULL, expires_at BIGINT NOT NULL)',
   'CREATE INDEX IF NOT EXISTS rate_expiry ON auth_rate_limits(expires_at)',
   ...directorySchema,
+  ...attendanceSchema,
 ];
 export async function migratePostgres(driver) {
   await driver.transaction(schemaStatements.map(text => ({ text, params: [] })));
@@ -20,6 +22,7 @@ function sessionStatements(session, previousHash, now) {
 export function createPostgresStore(driver) {
   return {
     ...createDirectoryStore(driver),
+    ...createAttendanceStore(driver),
     findUser: async username => (await driver.query('SELECT * FROM users WHERE username = $1', [username]))[0] || null,
     createUserWithSession: (user, session, previousHash, now) => driver.transaction([insertUser(user), ...sessionStatements(session, previousHash, now)]),
     createSession: (session, previousHash, now) => driver.transaction(sessionStatements(session, previousHash, now)),

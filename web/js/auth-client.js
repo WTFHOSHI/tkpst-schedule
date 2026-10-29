@@ -52,6 +52,11 @@ export function createAuthClient(fetcher = globalThis.fetch.bind(globalThis)) {
       try { return await request('grades'); }
       catch (error) { if (error.status === 401 && version === revision && !mutating) { ++revision; user = null; status = 'ready'; } throw error; }
     },
+    async attendance(month) {
+      const version = revision;
+      try { return await request('attendance', { month }); }
+      catch (error) { if (error.status === 401 && version === revision && !mutating) { ++revision; user = null; status = 'ready'; } throw error; }
+    },
   };
 }
 export const auth = createAuthClient();

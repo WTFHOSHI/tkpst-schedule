@@ -1,7 +1,7 @@
-// Офлайн: оболочка сайта из кэша (обновляется в фоне), данные API — всегда из сети.
-const CACHE = 'tkpst-shell-v3';
+// Офлайн: оболочка сайта из кэша; личные данные API — всегда из сети.
+const CACHE = 'tkpst-shell-v7';
 const SHELL = ['./', 'index.html', 'style.css', 'js/app.js', 'js/core.js', 'js/data.js',
-  'js/ui.js', 'js/grades.js', 'js/grades-view.js',
+  'js/ui.js', 'js/grades.js', 'js/grades-view.js', 'js/attendance.js', 'js/attendance-view.js',
   'js/auth-client.js', 'js/auth-view.js', 'icons/lucide/eye.svg', 'icons/lucide/eye-off.svg',
   'icons/lucide/chart-no-axes-column.svg', 'icons/lucide/user-round.svg',
   'icons/lucide/settings.svg', 'icons/lucide/calendar-check.svg', 'icons/lucide/bus-front.svg',
@@ -23,13 +23,22 @@ self.addEventListener('fetch', (e) => {
   if (url.pathname.startsWith('/api/')) return; // сеанс и личные данные никогда не кэшируются
   if (e.request.method !== 'GET' || url.origin !== location.origin) return; // API — напрямую
   if (url.pathname.endsWith('overrides.json')) return; // изменения админа — всегда из сети, не кэшируем
-  // Сначала сеть (чтобы обновления приходили сразу), без сети — кэш.
-  e.respondWith(
-    fetch(e.request)
-      .then((r) => {
-        if (r.ok) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
-        return r;
-      })
-      .catch(() => caches.match(e.request).then((m) => m || caches.match('index.html')))
-  );
+  const fetchAndCache = async () => {
+    const response = await fetch(e.request);
+    if (response.ok) {
+      const copy = response.clone();
+      await caches.open(CACHE).then((cache) => cache.put(e.request, copy)).catch(() => {});
+    }
+    return response;
+  };
+  e.respondWith((async () => {
+    const cached = await caches.match(e.request, { ignoreSearch: true });
+    // Render may be waking up. Show a previously loaded page immediately and refresh it in the background.
+    if (self.location.hostname === 'tkpst-schedule.onrender.com' && cached) {
+      e.waitUntil(fetchAndCache().catch(() => {}));
+      return cached;
+    }
+    try { return await fetchAndCache(); }
+    catch { return cached || await caches.match('index.html') || Response.error(); }
+  })());
 });
