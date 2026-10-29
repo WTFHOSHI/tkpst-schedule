@@ -7,7 +7,8 @@ import { attendanceWeek, validateAttendance } from './attendance-store.mjs';
 const derive = promisify(pbkdf2);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const vaultURL = 'https://wtfhoshi.github.io/tkpst-admin/vault.json';
-const ttl = 24 * 3600_000; // Same maximum lifetime as the existing admin-panel session.
+// A zero expiry means no scheduled expiration. Logout and vault rotation still revoke access.
+const persistentExpiry = 0;
 const unauthorized = () => new HttpError(401, 'Нужен пароль администратора. Войдите заново.');
 function decrypt(key, box, aad) {
   if (box?.v !== 1 || typeof box.iv !== 'string' || typeof box.ct !== 'string') throw new Error('Invalid encrypted object');
@@ -68,7 +69,7 @@ export function createAdminService({ store, fetchImpl = fetch, now = Date.now })
       if (secret.role !== role || typeof secret.gh !== 'string' || typeof secret.dk !== 'string' || Buffer.from(secret.dk, 'base64').length !== 32) throw unauthorized();
     } catch { throw unauthorized(); }
     finally { deriving--; }
-    const token = randomBytes(32).toString('base64url'), time = now(), expiresAt = time + ttl;
+    const token = randomBytes(32).toString('base64url'), time = now(), expiresAt = role === 'kurator' ? time + 24 * 3600_000 : persistentExpiry;
     if (attendanceOnly) await store.createAttendanceWriterSession(hash(token), current.fingerprint, role, expiresAt, time);
     else await store.createAdminSession(hash(token), current.fingerprint, expiresAt, time);
     return { token, expiresAt };
@@ -95,6 +96,7 @@ export function createAdminService({ store, fetchImpl = fetch, now = Date.now })
       const { course, monday } = attendanceWeek(body), ticket = randomBytes(32).toString('base64url');
       await store.reserveAttendanceTicket(hash(ticket), hash(token), course, monday, now());
       return { ticket };
+
     },
     async syncAttendance(body, token) {
       const scope = validateAttendance(body);

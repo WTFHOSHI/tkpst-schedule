@@ -74,8 +74,8 @@ function seal(key, data, role) {
 test('attendance HTTP: real role vault logins are scoped, revocable, rotated, bounded and private', async t => {
   const password = 'Role password fixture', salt = randomBytes(16), key = pbkdf2Sync(password, salt, 100000, 32, 'sha256');
   const vault = { v: 1, kdf: 'PBKDF2-SHA256', iter: 100000, salt: salt.toString('base64'), roles: Object.fromEntries(['admin','kurator','starosta'].map(role => [role, seal(key, { role, gh: 'private-github-key', dk: randomBytes(32).toString('base64') }, role)])) };
-  const store = createSQLiteStore(':memory:');
-  const app = await createAuthServer({ store, publicOrigin: 'http://127.0.0.1:4173', now: () => now, adminFetch: async () => Response.json(vault) });
+  const store = createSQLiteStore(':memory:'); let clock = now;
+  const app = await createAuthServer({ store, publicOrigin: 'http://127.0.0.1:4173', now: () => clock, adminFetch: async () => Response.json(vault) });
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); t.after(async () => { await new Promise(resolve => app.server.close(resolve)); app.close(); });
   const url = 'http://127.0.0.1:' + app.server.address().port;
   const request = (path, body = {}, token, headers = {}, method = 'POST') => fetch(url + path, { method, headers: { Origin: path.startsWith('/api/admin/') ? 'https://wtfhoshi.github.io' : 'http://127.0.0.1:4173', 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}), ...headers }, ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
@@ -87,6 +87,8 @@ test('attendance HTTP: real role vault logins are scoped, revocable, rotated, bo
   for (const role of ['admin','kurator','starosta']) {
     const login = await request('/api/admin/attendance/login', { password, role }); assert.equal(login.status, 200, await login.clone().text()); const session = await login.json();
     assert.deepEqual(Object.keys(session).sort(), ['expiresAt', 'token']);
+    assert.equal(session.expiresAt, role === 'kurator' ? clock + 864e5 : 0);
+    if (role !== 'kurator') { clock += 5 * 365 * 864e5; }
     assert.equal((await request('/api/admin/users', {}, session.token)).status, 401);
     assert.equal((await request('/api/admin/link', {}, session.token)).status, 401);
     const start = await request('/api/admin/attendance/start', { course: '2', monday: '2026-10-26' }, session.token); assert.equal(start.status, 200);
@@ -100,5 +102,6 @@ test('attendance HTTP: real role vault logins are scoped, revocable, rotated, bo
   const rotated = await (await request('/api/admin/attendance/login', { password, role: 'starosta' })).json();
   vault.roles.starosta = seal(key, { role: 'starosta', gh: 'changed', dk: randomBytes(32).toString('base64') }, 'starosta');
   assert.equal((await request('/api/admin/attendance/start', { course: '2', monday: '2026-10-26' }, rotated.token)).status, 401);
+  for (let i = 0; i < 3; i++) assert.equal((await request('/api/admin/attendance/login', { password, role: 'teacher' })).status, 401);
   assert.equal((await request('/api/admin/attendance/login', { password, role: 'teacher' })).status, 429, 'role exchange shares durable password throttling');
 });

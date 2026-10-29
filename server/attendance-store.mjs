@@ -72,10 +72,10 @@ export function attendanceProjection(rows, month, start, end) {
 export function createAttendanceStore(driver) {
   return {
     createAttendanceWriterSession: (hash, vaultHash, role, expiresAt, now) => driver.transaction([
-      { text: 'DELETE FROM attendance_writer_sessions WHERE expires_at <= $1', params: [now] },
+      { text: 'DELETE FROM attendance_writer_sessions WHERE expires_at > 0 AND expires_at <= $1', params: [now] },
       { text: 'INSERT INTO attendance_writer_sessions (token_hash, vault_hash, role, expires_at) VALUES ($1,$2,$3,$4)', params: [hash, vaultHash, role, expiresAt] },
     ]),
-    attendanceWriterSession: async (hash, now) => (await driver.query('SELECT vault_hash, role FROM attendance_writer_sessions WHERE token_hash = $1 AND expires_at > $2', [hash, now]))[0] || null,
+    attendanceWriterSession: async (hash, now) => (await driver.query('SELECT vault_hash, role FROM attendance_writer_sessions WHERE token_hash = $1 AND (expires_at = 0 OR expires_at > $2)', [hash, now]))[0] || null,
     deleteAttendanceWriterSession: hash => driver.transaction([
       { text: 'DELETE FROM attendance_writer_sessions WHERE token_hash = $1', params: [hash] },
       { text: 'DELETE FROM attendance_sync_tickets WHERE token_hash = $1', params: [hash] },

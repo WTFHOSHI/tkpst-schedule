@@ -43,10 +43,10 @@ export function createDirectoryStore(driver) {
       return { students, syncedAt: state ? Number(state.synced_at) : null };
     },
     createAdminSession: (hash, vaultHash, expiresAt, now) => driver.transaction([
-      { text: 'DELETE FROM admin_sessions WHERE expires_at <= $1', params: [now] },
+      { text: 'DELETE FROM admin_sessions WHERE expires_at > 0 AND expires_at <= $1', params: [now] },
       { text: 'INSERT INTO admin_sessions (token_hash, vault_hash, expires_at) VALUES ($1,$2,$3)', params: [hash, vaultHash, expiresAt] },
     ]),
-    adminSession: async (hash, now) => (await driver.query('SELECT vault_hash FROM admin_sessions WHERE token_hash = $1 AND expires_at > $2', [hash, now]))[0] || null,
+    adminSession: async (hash, now) => (await driver.query('SELECT vault_hash FROM admin_sessions WHERE token_hash = $1 AND (expires_at = 0 OR expires_at > $2)', [hash, now]))[0] || null,
     deleteAdminSession: hash => driver.query('DELETE FROM admin_sessions WHERE token_hash = $1', [hash]),
     deleteRegisteredUser: async (id, username) => (await driver.query('DELETE FROM users WHERE id = $1 AND username = $2 RETURNING id', [id, username])).length === 1,
     async linkStudent(userId, course, studentId, today) {
