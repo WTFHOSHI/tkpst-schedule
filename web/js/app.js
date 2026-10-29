@@ -161,7 +161,6 @@ function requireAccount(title) {
 function login() { authPage('login'); }
 function register() { authPage('register'); }
 function authPage(mode) {
-  if (auth.state().status === 'loading') { sessionLoading('Личный кабинет'); return; }
   if (auth.state().user) { go('account'); return; }
   $app.innerHTML = topBar(mode === 'register' ? 'Создать аккаунт' : 'Личный кабинет', mode === 'register' ? 'Регистрация' : 'Вход в аккаунт') + authFormMarkup(mode);
   const form = $app.querySelector('[data-auth-form]');
@@ -1073,11 +1072,19 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 render();
-if (!staticHosting) auth.restore().then(() => { if (authPages.has(currentPath())) render(); });
+if (!staticHosting) auth.restore().then(() => {
+  const path = currentPath();
+  if (!authPages.has(path)) return;
+  // Keep text already entered in the login form when a background session check ends.
+  if ((path === 'login' || path === 'register') && !auth.state().user) return;
+  render();
+});
 document.addEventListener('visibilitychange', async () => {
   if (document.hidden || staticHosting) return;
   const before = auth.state();
   await auth.restore();
   const after = auth.state();
-  if ((before.user?.id !== after.user?.id || before.status !== after.status) && authPages.has(currentPath())) render();
+  const path = currentPath();
+  if ((before.user?.id !== after.user?.id || before.status !== after.status) && authPages.has(path)
+    && (path !== 'login' && path !== 'register' || after.user)) render();
 });
