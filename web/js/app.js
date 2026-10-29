@@ -35,11 +35,27 @@ const I = {
 
 // ---------------- Тема ----------------
 
+const paletteOptions = [
+  ['forest', 'Зелёная', '#4F6F2F'],
+  ['ocean', 'Синяя', '#285A91'],
+  ['violet', 'Лиловая', '#6A4EA3'],
+  ['sand', 'Тёплая', '#8B5319'],
+  ['mono', 'Чёрно-белая', 'linear-gradient(90deg, #161616 50%, #fff 50%)'],
+];
+const paletteNames = new Set(paletteOptions.map(([name]) => name));
+const themeModes = new Set(['system', 'light', 'dark']);
+
 function applyTheme() {
-  const theme = store.get('theme', 'light');
-  document.documentElement.dataset.theme = theme;
+  const savedTheme = store.get('theme', 'light');
+  const theme = themeModes.has(savedTheme) ? savedTheme : 'light';
+  const savedPalette = store.get('palette', 'forest');
+  const palette = paletteNames.has(savedPalette) ? savedPalette : 'forest';
+  const root = document.documentElement;
+  root.dataset.theme = theme;
+  root.dataset.palette = palette;
   const dark = theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.querySelector('meta[name=theme-color]').content = dark ? '#121410' : '#F6F8F1';
+  root.dataset.appearance = dark ? 'dark' : 'light';
+  document.querySelector('meta[name=theme-color]').content = getComputedStyle(root).getPropertyValue('--bg').trim();
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
 applyTheme();
@@ -127,7 +143,7 @@ const authPages = new Set(['grades', 'subject', 'account', 'login', 'register'])
 const currentPath = () => location.hash.replace(/^#\/?/, '').split('/')[0];
 function cloudAccount(path) {
   const section = ['login', 'register', 'grades'].includes(path) ? path : 'account';
-  $app.innerHTML = topBar('Личный кабинет', 'Вход и личные данные') + `<main class="grades-main access-main">${icon('user-round')}<h2>Личный кабинет</h2><p>Войдите или создайте аккаунт по ссылке ниже. Ваш прежний логин и пароль сохраняются.</p><a class="btn auth-submit" href="https://tkpst-schedule.onrender.com/#/${section}">Открыть личный кабинет</a><a class="auth-public-link" href="#/schedule">Вернуться к расписанию</a><a class="auth-public-link" href="#/demo">Посмотреть пример журнала</a></main>`;
+  $app.innerHTML = topBar('Личный кабинет', null) + `<main class="grades-main access-main">${icon('user-round')}<h2>Личный кабинет</h2><a class="btn auth-submit" href="https://tkpst-schedule.onrender.com/#/${section}">ЛК без VPN</a><a class="btn outline" href="https://tkpst-schedule.vercel.app/#/${section}">ЛК с VPN</a><a class="auth-public-link" href="#/schedule">Расписание</a></main>`;
 }
 function sessionLoading(title) {
   $app.innerHTML = topBar(title, null) + '<main class="grades-main"><div class="msg" role="status"><div class="spinner"></div><p>Проверяем вход…</p></div></main>';
@@ -225,7 +241,7 @@ function grades() {
   const paint = state => {
     const focused = ['data-attendance-prev', 'data-attendance-next', 'data-attendance-month', 'data-attendance-retry'].find(attr => document.activeElement?.hasAttribute(attr));
     const focusedTab = document.activeElement?.dataset.progressTab;
-    $app.innerHTML = topBar('Успеваемость', 'Оценки и посещаемость') + attendanceMarkup({ month, tab: selectedProgressTab, subjects, subjectsPending, ...state });
+    $app.innerHTML = topBar('Успеваемость', null) + attendanceMarkup({ month, tab: selectedProgressTab, subjects, subjectsPending, ...state });
     $app.querySelectorAll('[data-progress-tab]').forEach(button => {
       button.onclick = () => {
         if (selectedProgressTab === button.dataset.progressTab) return;
@@ -1007,28 +1023,33 @@ function address() {
 // ---------------- Настройки ----------------
 
 function settings() {
-  const theme = store.get('theme', 'light');
+  const savedTheme = store.get('theme', 'light');
+  const theme = themeModes.has(savedTheme) ? savedTheme : 'light';
+  const savedPalette = store.get('palette', 'forest');
+  const palette = paletteNames.has(savedPalette) ? savedPalette : 'forest';
   const home = store.get('home');
   const opt = (v, l) => `<label class="radio"><input type="radio" name="theme" value="${v}" ${theme === v ? 'checked' : ''}><span>${l}</span></label>`;
+  const color = ([key, label, swatch]) => `<label class="theme-choice"><input type="radio" name="palette" value="${key}" ${palette === key ? 'checked' : ''}><span class="theme-swatch" style="--swatch:${swatch}" aria-hidden="true"></span><span>${label}</span></label>`;
   $app.innerHTML = `
     ${topBar('Настройки', null)}
     <main class="list form">
-      <h3 class="section">Тема</h3>
+      <h3 class="section">Цветовая тема</h3>
+      <div class="theme-grid" role="radiogroup" aria-label="Цветовая тема">${paletteOptions.map(color).join('')}</div>
+      <h3 class="section">Режим</h3>
       <div class="card">${opt('system', 'Как в системе')}${opt('light', 'Светлая')}${opt('dark', 'Тёмная')}</div>
       <h3 class="section">Расписание</h3>
       <div class="card">
-        <div>Группа: ИС-25-3С (ТКПСТ, Луначарского)</div>
-        <p class="muted small">Время везде считается по Тюмени (UTC+5). Звонки — по официальному расписанию звонков, предметы, кабинеты и преподаватели — из OpenScheduleApi. Об изменениях расписание сообщит при открытии сайта.</p>
+        <div>Группа ИС-25-3С · Луначарского</div>
         <button class="btn outline" data-clear>Очистить сохранённое расписание</button>
       </div>
       <h3 class="section">Автобусы</h3>
       <div class="card">
         <div>Домашний адрес: ${esc(home ? home.label : 'не указан')}</div>
-        <p class="muted small">Колледж: Луначарского, 19. Данные об автобусах — Тюменьгортранс (онлайн по GPS).</p>
         <button class="btn outline" data-addr>${home ? 'Изменить' : 'Указать'} домашний адрес</button>
       </div>
     </main>`;
   $app.querySelectorAll('input[name=theme]').forEach((r) => { r.onchange = () => { store.set('theme', r.value); applyTheme(); }; });
+  $app.querySelectorAll('input[name=palette]').forEach((r) => { r.onchange = () => { store.set('palette', r.value); applyTheme(); }; });
   $app.querySelector('[data-clear]').onclick = (e) => { clearScheduleCache(); e.target.textContent = 'Очищено'; e.target.disabled = true; };
   $app.querySelector('[data-addr]').onclick = () => go('address');
 }

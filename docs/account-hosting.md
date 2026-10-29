@@ -1,6 +1,6 @@
 # Account hosting outside Vercel
 
-Application: **https://tkpst-schedule.onrender.com/**. User confirmed the actual login page works without VPN on 2026-10-27. Service `srv-dbg97mmc6qcc73eo871g`, My Workspace, Free plan, Frankfurt.
+Main static site: **https://wtfhoshi.github.io/tkpst-schedule/**. User confirmed it opens with VPN. The account entry offers **https://tkpst-schedule.onrender.com/** without VPN and **https://tkpst-schedule.vercel.app/** with VPN; the user confirmed both routes in the respective network mode. Render service `srv-dbg97mmc6qcc73eo871g`, My Workspace, Free plan, Frankfurt.
 
 Render runs `node server/hosted.mjs` and serves both `web/` and `/api/*` under the same HTTPS origin. Use only the **Free** plan in the confirmed workspace. `render.yaml` describes the service. No Render database or persistent disk is required.
 
@@ -12,7 +12,7 @@ Set `DATABASE_URL` privately to the existing production Neon connection string. 
 
 `/overrides.json` fetches the fixed GitHub Pages source with `no-store`, so admin schedule changes do not wait for a Render rebuild. Private server files, database files and environment files remain outside the static allowlist.
 
-Free services sleep after 15 idle minutes and can take about one minute to restart. Existing durable rate limits use the socket address in this standalone mode, so people behind the same reverse proxy can share a bucket; no unverified forwarding header is trusted.
+Free Render services sleep after 15 idle minutes and can take about one minute to restart. The GitHub Pages entry loads independently and immediately, but it cannot make the Render account backend start instantly. Keepalive requests would consume nearly all 750 shared monthly Free instance hours for this workspace and risk suspending its other two Free services, so none are scheduled. Existing durable rate limits use the socket address in this standalone mode, so people behind the same reverse proxy can share a bucket; no unverified forwarding header is trusted.
 
 Verification: `npm ci`, `npm test`, `npm run build`, then the deployment's `scripts/smoke-cloud.mjs` check and a real browser registration/refresh/logout using a synthetic account. Check the actual service URL without VPN before updating the Pages link.
 

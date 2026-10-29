@@ -37,16 +37,15 @@ test('server millisecond timestamp renders correctly; pairs outside source range
   assert.equal(model.counts.marked, 1);
   const { attendanceMarkup } = await import('../js/attendance-view.js');
   const html = attendanceMarkup({ month: '2026-10', kind: 'ready', data: { linked: true, syncedAt: Date.parse('2026-10-27T10:00:00Z'), records: [] } });
-  assert.match(html, /Последняя передача/);
-  assert.doesNotMatch(html, /ещё не переданы|Invalid Date/);
+  assert.doesNotMatch(html, /За этот месяц данных пока нет|Invalid Date/);
 });
 
 test('attendance view distinguishes unsynced, unmarked, unlinked, loading and errors', async () => {
   const { attendanceMarkup } = await import('../js/attendance-view.js');
   const render = data => attendanceMarkup({ month: '2026-10', kind: 'ready', data });
-  assert.match(render({ linked: true, syncedAt: null, records: [] }), /ещё не переданы/);
+  assert.match(render({ linked: true, syncedAt: null, records: [] }), /За этот месяц данных пока нет/);
   assert.match(render({ linked: true, syncedAt: '2026-10-27T10:00:00Z', records: [] }), /Пока нет отметок/);
-  assert.match(render({ linked: false, records: [{ date: '2026-10-26', pair: 1, status: 'P' }] }), /Подтвердите связь/);
+  assert.match(render({ linked: false, records: [{ date: '2026-10-26', pair: 1, status: 'P' }] }), /Аккаунт не привязан/);
   assert.doesNotMatch(render({ linked: false }), /attendance-summary/);
   assert.match(attendanceMarkup({ month: '2026-10', kind: 'loading' }), /Загружаем посещаемость/);
   const error = attendanceMarkup({ month: '2026-10', kind: 'error', error: '<img src=x onerror=bad>' });
@@ -69,19 +68,17 @@ test('journal lists only absences and separates grades into another tab', async 
   assert.match(html, /type="month"/);
   assert.match(html, /Предыдущий месяц/);
   assert.match(html, /Следующий месяц/);
-  assert.match(html, /Последняя передача/);
-  assert.match(html, /Обновляется автоматически/);
+  assert.doesNotMatch(html, /Последняя передача|Обновляется автоматически|Пустые ячейки/);
   assert.doesNotMatch(html, /data-attendance-retry/);
-  assert.match(html, /Пустые ячейки/);
   assert.match(html, /data-progress-tab="grades"/);
-  assert.doesNotMatch(html, /Оценки ещё не подключены/);
+  assert.doesNotMatch(html, /Оценки не подключены/);
   const grades = attendanceMarkup({ month: '2026-10', tab: 'grades', kind: 'ready', data: null });
-  assert.match(grades, /Оценки ещё не подключены/);
+  assert.match(grades, /Оценки не подключены/);
   assert.doesNotMatch(grades, /data-attendance-month|Журнал пропусков/);
   assert.doesNotMatch(html, /%|NaN|Invalid Date/);
   assert.match(attendanceMarkup({ month: '2026-10', kind: 'ready', refreshError: true, data: {
     linked: true, syncedAt: '2026-10-27T10:00:00Z', records: [{ date: '2026-10-26', pair: 1, status: 'N' }],
-  } }), /Повторим автоматически/);
+  } }), /Данные обновятся автоматически/);
 });
 
 test('month with only present marks shows a clear no absences state', async () => {

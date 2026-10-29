@@ -4,7 +4,7 @@ export function authFormMarkup(mode) {
   const registering = mode === 'register';
   const passwordField = (name, label, autocomplete) => `<div class="auth-field"><label for="auth-${name}">${label}</label><span class="auth-input-row"><input id="auth-${name}" name="${name}" type="password" autocomplete="${autocomplete}" ${registering ? 'minlength="12"' : ''} maxlength="128" required aria-describedby="${registering ? 'password-hint' : 'auth-error'}"><button class="password-toggle" type="button" data-password-toggle="${name}" aria-label="Показать ${name === 'confirm' ? 'повтор пароля' : 'пароль'}" aria-pressed="false">${icon('eye')}</button></span></div>`;
   return `<main class="grades-main auth-main">
-    <p class="auth-intro">${registering ? 'Создайте аккаунт для личного кабинета. Администратор подтвердит вашу связь со студентом из списка группы.' : 'Войдите в свой аккаунт, чтобы открыть личный кабинет.'}</p>
+    ${registering ? '<p class="auth-intro">После регистрации администратор подтвердит аккаунт.</p>' : ''}
     <form class="auth-form" data-auth-form="${mode}">
       <fieldset><legend class="sr-only">${registering ? 'Регистрация' : 'Вход'}</legend>
         ${registering ? '<label class="auth-field"><span>Как к вам обращаться</span><input name="displayName" autocomplete="name" minlength="2" maxlength="80" placeholder="Ваше имя" required></label>' : ''}
@@ -23,7 +23,7 @@ export function authFormMarkup(mode) {
 }
 
 export function signedOutMarkup(unavailable = false) {
-  return `<main class="grades-main access-main">${icon('user-round')}<h2>Посещаемость в личном кабинете</h2><p>Войдите или создайте аккаунт. После подтверждения администратором здесь будут ваши отметки посещаемости.</p>
+  return `<main class="grades-main access-main">${icon('user-round')}<h2>Личный кабинет</h2>
     ${unavailable ? '<p class="auth-error" role="status">Сервис входа временно недоступен.</p><button class="btn outline" data-auth-retry>Проверить соединение</button>' : ''}
     <a class="btn auth-submit" href="#/login">Войти в личный кабинет</a><a class="btn outline" href="#/register">Создать аккаунт</a>
     <a class="auth-public-link" href="#/demo">Посмотреть пример журнала</a></main>`;
@@ -37,10 +37,9 @@ export function profileMarkup(user) {
     <a class="btn account-cta" href="#/grades">${icon('chart-no-axes-column')} Моя успеваемость</a>
     <a class="account-settings" href="#/settings">${icon('settings')}<span>Настройки приложения</span>${icon('chevron-right')}</a>
     <p class="auth-error" data-logout-error role="alert" hidden></p>
-    <button class="logout-button" data-logout>${icon('log-out')} Выйти из аккаунта</button>
-    <p class="demo-notice">Посещаемость доступна в разделе «Успеваемость» после передачи данных администратором. Личные оценки ещё не подключены.</p></main>`;
+    <button class="logout-button" data-logout>${icon('log-out')} Выйти из аккаунта</button></main>`;
 }
 
 export function personalGradesMarkup() {
-  return `<main class="grades-main access-main">${icon('chart-no-axes-column')}<h2>Журнал ещё не подключён</h2><p>Вы вошли в свой аккаунт. Предметы и оценки появятся после подключения источника данных колледжа.</p><a class="btn" href="#/account">В личный кабинет</a><a class="auth-public-link" href="#/demo">Посмотреть пример журнала</a></main>`;
+  return `<main class="grades-main access-main">${icon('chart-no-axes-column')}<h2>Оценки не подключены</h2><a class="btn" href="#/account">В личный кабинет</a><a class="auth-public-link" href="#/demo">Посмотреть пример</a></main>`;
 }

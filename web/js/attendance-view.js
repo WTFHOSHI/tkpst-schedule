@@ -2,8 +2,7 @@ import { escapeHtml as esc, icon } from './ui.js';
 import { ATTENDANCE_STATUSES, MIN_MONTH, MAX_MONTH, attendanceModel } from './attendance.js';
 
 const dayFormat = new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Yekaterinburg' });
-const syncFormat = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Yekaterinburg' });
-const gradeNotice = '<section class="attendance-grade-note" role="tabpanel" id="progress-grades" aria-labelledby="progress-grades-tab"><h2>Оценки ещё не подключены</h2><p>Личные оценки появятся после подключения журнала колледжа.</p><a class="auth-public-link" href="#/demo">Посмотреть пример оценок</a></section>';
+const gradeNotice = '<section class="attendance-grade-note" role="tabpanel" id="progress-grades" aria-labelledby="progress-grades-tab"><h2>Оценки не подключены</h2><a class="auth-public-link" href="#/demo">Посмотреть пример</a></section>';
 const retry = '<button class="btn outline" data-attendance-retry>Повторить сейчас</button>';
 
 function missedLabel(count) {
@@ -25,23 +24,23 @@ export function attendanceMarkup({ month, tab = 'attendance', kind = 'loading', 
   } else if (kind === 'error') {
     content = `<div class="attendance-state"><h3>Не удалось загрузить посещаемость</h3><p class="auth-error" role="alert">${esc(error || 'Проверьте соединение и попробуйте снова.')}</p>${retry}</div>`;
   } else if (!model.linked) {
-    content = '<div class="attendance-state"><h3>Подтвердите связь со студентом</h3><p>Сообщите администратору свой логин. После подтверждения здесь появятся ваши отметки посещаемости.</p><a class="btn outline" href="#/account">Открыть профиль</a></div>';
+    content = '<div class="attendance-state"><h3>Аккаунт не привязан к студенту</h3><a class="btn outline" href="#/account">Открыть профиль</a></div>';
   } else if (!model.syncedAt) {
-    content = '<div class="attendance-state"><h3>Данные за месяц ещё не переданы</h3><p>Посещаемость появится здесь автоматически после передачи отметок из админки. Можно выбрать другой месяц.</p></div>';
+    content = '<div class="attendance-state"><h3>За этот месяц данных пока нет</h3></div>';
   } else {
     const c = model.counts;
     const missedDays = model.days.map(day => ({ date: day.date, records: day.records.filter(record => record.status !== 'P') })).filter(day => day.records.length);
-    const summary = c.marked ? `<p class="attendance-overview"><strong>${missedLabel(c.missed)}</strong><span>по отмеченным парам</span></p>` : '';
+    const summary = c.marked ? `<p class="attendance-overview"><strong>${missedLabel(c.missed)}</strong></p>` : '';
     const journal = !c.marked
-      ? '<div class="attendance-state"><h3>Пока нет отметок</h3><p>В переданных данных за этот месяц нет отметок посещаемости.</p></div>'
+      ? '<div class="attendance-state"><h3>Пока нет отметок</h3></div>'
       : !missedDays.length
-        ? '<div class="attendance-state attendance-empty"><h3>Пропусков нет</h3><p>Среди переданных отметок за этот месяц пропусков нет.</p></div>'
+        ? '<div class="attendance-state attendance-empty"><h3>Пропусков нет</h3></div>'
         : `<section class="attendance-journal" aria-label="Список пропусков"><ul class="attendance-absence-list">${missedDays.map(day => `<li class="attendance-absence-day"><h3><time datetime="${day.date}">${esc(dayFormat.format(new Date(day.date + 'T12:00:00Z')))}</time></h3><ul>${day.records.map(record => {
           const title = subjects[`${record.date}/${record.pair}`];
           const label = typeof title === 'string' && title.trim() ? title.trim() : subjectsPending ? 'Загружаем предмет…' : `${record.pair}-я пара`;
           return `<li><span class="attendance-lesson${label === `${record.pair}-я пара` ? ' is-fallback' : ''}">${esc(label)}</span><span class="attendance-status ${record.status === 'N' ? 'is-unexcused' : ''}">${esc(ATTENDANCE_STATUSES[record.status])}</span></li>`;
         }).join('')}</ul></li>`).join('')}</ul></section>`;
-    content = `${summary}${journal}<p class="attendance-caption">Пустые ячейки не считаются пропусками.</p><div class="attendance-sync"><p>Последняя передача: <time datetime="${esc(model.syncedAt)}">${esc(syncFormat.format(new Date(model.syncedAt)))}</time> · Тюмень</p><p>Обновляется автоматически</p></div>${refreshError ? '<p class="attendance-refresh-error" role="status">Не удалось проверить новые отметки. Повторим автоматически.</p>' : ''}`;
+    content = `${summary}${journal}${refreshError ? '<p class="attendance-refresh-error" role="status">Нет связи. Данные обновятся автоматически.</p>' : ''}`;
   }
   return `<main class="grades-main attendance-main">${tabs}<section role="tabpanel" id="progress-attendance" aria-labelledby="progress-attendance-tab"><h2 class="sr-only">Посещаемость</h2>${controls}<div data-attendance-content aria-live="polite" aria-busy="${kind === 'loading'}">${content}</div></section></main>`;
 }
