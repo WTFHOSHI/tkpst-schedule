@@ -30,9 +30,10 @@ try {
   for (const width of [320, 390, 430]) {
     const context = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
     await context.addInitScript(() => localStorage.setItem('group_id', '196'));
+    let signedIn = true;
     await context.route('**/api/**', route => {
       const path = new URL(route.request().url()).pathname;
-      const body = path.endsWith('/auth/session') ? { user: { id: 'qa', displayName: 'QA', student: { displayName: 'QA', groupName: 'ИС-25-3С' } } }
+      const body = path.endsWith('/auth/session') ? { user: signedIn ? { id: 'qa', displayName: 'QA', student: { displayName: 'QA', groupName: 'ИС-25-3С' } } : null }
         : path.endsWith('/attendance') ? { linked: true, syncedAt: Date.now(), records: [{ date: day, pair: 2, status: 'N' }] }
           : {};
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
@@ -44,15 +45,21 @@ try {
     });
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(`${width}px: ${error.message}`));
-    for (const [route, expected] of [['schedule', 'Расписание'], ['buses', 'Автобусы'], ['settings', 'Настройки'], ['login', 'Личный кабинет'], ['grades', 'Успеваемость']]) {
-      await page.goto(`${base}/#/${route}`, { waitUntil: 'domcontentloaded' });
-      await page.getByRole('heading', { name: expected, exact: true }).first().waitFor();
-      if (route === 'grades') await page.getByText('История', { exact: true }).waitFor();
-      await page.waitForTimeout(150);
-      const bounds = await page.evaluate(() => ({ screen: innerWidth, document: document.documentElement.scrollWidth, nav: !!document.querySelector('#nav a') }));
+    for (const [route, expected] of [['schedule', 'Расписание'], ['buses', 'Автобусы'], ['settings', 'Настройки'], ['login', 'Личный кабинет'], ['account', 'Личный кабинет'], ['grades', 'Успеваемость']]) {
+      signedIn = route !== 'login';
+      const target = route === 'login' ? await context.newPage() : page;
+      target.on('pageerror', error => errors.push(`${width}px ${route}: ${error.message}`));
+      await target.goto(`${base}/#/${route}`, { waitUntil: 'domcontentloaded' });
+      await target.getByRole('heading', { name: expected, exact: true }).first().waitFor();
+      if (route === 'login') await target.locator('form[data-auth-form] input[type=password]').waitFor();
+      if (route === 'account') await target.getByText('Настройки приложения').waitFor();
+      if (route === 'grades') await target.getByText('История', { exact: true }).waitFor();
+      await target.waitForTimeout(150);
+      const bounds = await target.evaluate(() => ({ screen: innerWidth, document: document.documentElement.scrollWidth, nav: !!document.querySelector('#nav a') }));
       assert.ok(bounds.document <= bounds.screen + 1, `${width}px ${route}: horizontal overflow ${bounds.document}`);
       assert.ok(bounds.nav, `${width}px ${route}: navigation missing`);
-      await page.screenshot({ path: `captures/${width}-${route}.png`, fullPage: true });
+      await target.screenshot({ path: `captures/${width}-${route}.png`, fullPage: true });
+      if (route === 'login') await target.close();
     }
     await page.goto(`${base}/#/grades`, { waitUntil: 'domcontentloaded' });
     await page.getByRole('tab', { name: 'Посещаемость' }).waitFor();
