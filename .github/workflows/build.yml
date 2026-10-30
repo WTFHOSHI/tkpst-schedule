@@ -11,6 +11,23 @@ permissions:
   contents: write
 
 jobs:
+  web-visual:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm test && npm run build && npm run test:visual
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobile-visual-check
+          path: captures/*.png
+
   android:
     runs-on: ubuntu-latest
     steps:
@@ -107,8 +124,8 @@ jobs:
 
   # Сайт для iPhone (открывается с ярлыка) — GitHub Pages
   release:
-    needs: [android, ios]
-    if: always() && needs.android.result == 'success'
+    needs: [android, ios, web-visual]
+    if: always() && needs.android.result == 'success' && needs.ios.result == 'success' && needs.web-visual.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -128,4 +145,3 @@ jobs:
           files: |
             out/*.apk
             out/*.ipa
-            out/**/*.png

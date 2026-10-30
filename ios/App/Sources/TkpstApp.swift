@@ -34,10 +34,8 @@ struct TkpstApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            MobileAppView()
                 .environmentObject(settings)
-                .preferredColorScheme(settings.theme.colorScheme)
-                .tint(Palette.primary)
         }
         .onChange(of: phase) { p in
             if p == .background { BackgroundSync.schedule() }

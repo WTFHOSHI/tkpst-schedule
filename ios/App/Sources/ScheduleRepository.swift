@@ -17,7 +17,8 @@ struct DayData {
 actor ScheduleRepository {
     static let shared = ScheduleRepository()
 
-    static let base = "https://api.thisishyum.ru/schedule_api/tyumen"
+    static let base = "https://tkpst-account.telling-math.workers.dev/schedule_api/tyumen"
+    static let directBase = "https://api.thisishyum.ru/schedule_api/tyumen"
     static let groupName = "ИС-25-3С"
     static let collegeId = 1
     /// Проверено вручную 28.09.2026: ИС-25-3С, кампус «Луначарского 2 курс».
@@ -26,6 +27,11 @@ actor ScheduleRepository {
 
     private let defaults = UserDefaults(suiteName: "schedule_cache") ?? .standard
 
+    private func get(_ path: String) async throws -> Data {
+        do { return try await Http.get(Self.base + path, timeout: 10) }
+        catch { return try await Http.get(Self.directBase + path) }
+    }
+
     private func normalize(_ s: String) -> String { s.replacingOccurrences(of: " ", with: "").uppercased() }
 
     /// Группа закреплена: id ищется один раз и сохраняется.
@@ -33,7 +39,7 @@ actor ScheduleRepository {
         let saved = defaults.integer(forKey: "group_id")
         if saved > 0 { return saved }
         var id = Self.fallbackGroupId
-        if let data = try? await Http.get("\(Self.base)/colleges/\(Self.collegeId)/groups"),
+        if let data = try? await get("/colleges/\(Self.collegeId)/groups"),
            let groups = try? JSONDecoder().decode([ApiGroup].self, from: data),
            let g = groups.first(where: { normalize($0.name) == normalize(Self.groupName) }) {
             id = g.studentGroupId
@@ -43,7 +49,7 @@ actor ScheduleRepository {
     }
 
     private func lastPublished(_ gid: Int) async -> Date? {
-        guard let data = try? await Http.get("\(Self.base)/groups/\(gid)/schedules/last"),
+        guard let data = try? await get("/groups/\(gid)/schedules/last"),
               let d = try? JSONDecoder().decode(ApiDate.self, from: data).date else { return nil }
         return Tyumen.parseDay(d)
     }
@@ -61,7 +67,7 @@ actor ScheduleRepository {
     func load(_ day: Date) async throws -> DayData {
         do {
             let gid = await groupId()
-            let body = try await Http.get("\(Self.base)/groups/\(gid)/schedules?date=\(Tyumen.isoDay(day))")
+            let body = try await get("/groups/\(gid)/schedules?date=\(Tyumen.isoDay(day))")
             let lessons = try ScheduleParser.lessons(from: body)
             var notPublished = false
             if lessons.isEmpty, let last = await lastPublished(gid) {

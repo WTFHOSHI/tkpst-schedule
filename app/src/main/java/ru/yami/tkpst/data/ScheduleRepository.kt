@@ -29,7 +29,8 @@ data class DayData(
 class ScheduleRepository(context: Context) {
 
     companion object {
-        const val BASE = "https://api.thisishyum.ru/schedule_api/tyumen"
+        const val BASE = "https://tkpst-account.telling-math.workers.dev/schedule_api/tyumen"
+        const val DIRECT_BASE = "https://api.thisishyum.ru/schedule_api/tyumen"
         const val GROUP_NAME = "ИС-25-3С"
         const val COLLEGE_ID = 1
         /** Проверено вручную 28.09.2026: ИС-25-3С, кампус «Луначарского 2 курс». */
@@ -41,7 +42,8 @@ class ScheduleRepository(context: Context) {
     private val prefs = context.getSharedPreferences("schedule_cache", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
-    private fun get(path: String): String = Http.get(BASE + path)
+    private fun get(path: String): String = runCatching { Http.get(BASE + path, 10_000, 8_000) }
+        .getOrElse { Http.get(DIRECT_BASE + path) }
 
     private fun normalize(s: String) = s.replace(" ", "").uppercase()
 

@@ -11,12 +11,14 @@
     "db:cleanup": "node server/maintenance.mjs",
     "db:import": "node server/import-sqlite.mjs",
     "start": "node server/index.mjs",
-    "test": "node --test web/test/*.test.mjs server/test/*.test.mjs scripts/test/*.test.mjs worker/test/*.test.mjs"
+    "test": "node --test web/test/*.test.mjs server/test/*.test.mjs scripts/test/*.test.mjs worker/test/*.test.mjs",
+    "test:visual": "node scripts/visual-smoke.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "1.2.0"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.12"
+    "@electric-sql/pglite": "0.5.12",
+    "playwright": "^1.64.1"
   }
 }
