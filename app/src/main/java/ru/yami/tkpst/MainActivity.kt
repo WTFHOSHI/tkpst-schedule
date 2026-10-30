@@ -28,7 +28,9 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import ru.yami.tkpst.data.ScheduleNotifier
 
 class MainActivity : ComponentActivity() {
@@ -144,6 +146,10 @@ class MainActivity : ComponentActivity() {
         val root = FrameLayout(this).apply {
             addView(site, FrameLayout.LayoutParams(-1, -1))
             addView(this@MainActivity.overlay, FrameLayout.LayoutParams(-1, -1))
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            view.setPadding(0, 0, 0, insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom)
+            insets
         }
         setContentView(root)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
