@@ -1,5 +1,5 @@
 // Офлайн: оболочка сайта из кэша; личные данные API — всегда из сети.
-const CACHE = 'tkpst-shell-v9';
+const CACHE = 'tkpst-shell-v10';
 const SHELL = ['./', 'index.html', 'style.css', 'js/app.js', 'js/core.js', 'js/data.js',
   'js/ui.js', 'js/grades.js', 'js/grades-view.js', 'js/attendance.js', 'js/attendance-view.js',
   'js/auth-client.js', 'js/auth-view.js', 'icons/lucide/eye.svg', 'icons/lucide/eye-off.svg',
@@ -20,7 +20,7 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  if (url.pathname.startsWith('/api/')) return; // сеанс и личные данные никогда не кэшируются
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/schedule_api/')) return; // API не кэшируется оболочкой: даты расписания хранятся отдельно
   if (e.request.method !== 'GET' || url.origin !== location.origin) return; // API — напрямую
   if (url.pathname.endsWith('overrides.json')) return; // изменения админа — всегда из сети, не кэшируем
   const fetchAndCache = async () => {

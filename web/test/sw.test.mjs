@@ -38,3 +38,13 @@ test('service worker never intercepts private API requests', () => {
   onFetch({ request: new Request('https://tkpst-schedule.onrender.com/api/auth/session', { method: 'POST' }), respondWith: () => { intercepted = true; } });
   assert.equal(intercepted, false);
 });
+
+test('service worker leaves dated schedule API to its date-specific application cache', () => {
+  const onFetch = worker('tkpst-account.telling-math.workers.dev', () => { throw new Error('should not fetch'); });
+  let intercepted = false;
+  onFetch({
+    request: new Request('https://tkpst-account.telling-math.workers.dev/schedule_api/tyumen/groups/196/schedules?date=2026-10-30'),
+    respondWith: () => { intercepted = true; },
+  });
+  assert.equal(intercepted, false);
+});
