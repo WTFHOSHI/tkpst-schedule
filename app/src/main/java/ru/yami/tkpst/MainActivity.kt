@@ -87,7 +87,7 @@ class MainActivity : ComponentActivity() {
                         if (result == "\"reload\"") view.reload()
                         else {
                             observeAppearance(view)
-                            overlay.visibility = View.GONE
+                            this@MainActivity.overlay.visibility = View.GONE
                             requestNotificationsOnce()
                         }
                     }
@@ -143,7 +143,7 @@ class MainActivity : ComponentActivity() {
         }
         val root = FrameLayout(this).apply {
             addView(site, FrameLayout.LayoutParams(-1, -1))
-            addView(overlay, FrameLayout.LayoutParams(-1, -1))
+            addView(this@MainActivity.overlay, FrameLayout.LayoutParams(-1, -1))
         }
         setContentView(root)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
