@@ -27,6 +27,14 @@ try {
   assert.equal((await call('auth/login',{username,password})).data.user.id,id);
   assert.equal((await call('auth/logout')).status,204);
   const get=await fetch(origin+'/api/auth/session'); assert.equal(get.status,405);
-  for(const path of ['/server/.data/accounts.sqlite','/.env.cloud','/server/accounts.mjs']) assert.ok([403,404].includes((await fetch(origin+path)).status), 'Private files must be forbidden or absent: '+path);
+  let publicShell;
+  for (const path of ['/server/.data/accounts.sqlite', '/.env.cloud', '/server/accounts.mjs']) {
+    const response = await fetch(origin + path);
+    if ([403, 404].includes(response.status)) continue;
+    assert.equal(response.status, 200, 'Private file request returned an unexpected status: ' + path);
+    assert.match(response.headers.get('content-type') || '', /^text\/html\b/i, 'Private file path must only return the public app shell: ' + path);
+    publicShell ??= await (await fetch(origin + '/')).text();
+    assert.equal(await response.text(), publicShell, 'Private file path must only return the public app shell: ' + path);
+  }
   console.log('Cloud smoke passed: register, session, profile, private grades, logout, login, cookies, cache and private files.');
 } catch(error) { console.error('Cloud smoke failed: '+error.message); process.exitCode=1; }
