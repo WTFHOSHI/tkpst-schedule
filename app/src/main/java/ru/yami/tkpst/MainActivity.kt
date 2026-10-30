@@ -35,6 +35,7 @@ import ru.yami.tkpst.data.ScheduleNotifier
 
 class MainActivity : ComponentActivity() {
     private lateinit var site: WebView
+    private lateinit var root: FrameLayout
     private lateinit var overlay: LinearLayout
     private lateinit var progress: ProgressBar
     private lateinit var message: TextView
@@ -143,12 +144,14 @@ class MainActivity : ComponentActivity() {
             addView(message)
             addView(retry)
         }
-        val root = FrameLayout(this).apply {
+        root = FrameLayout(this).apply {
+            setBackgroundColor(Color.rgb(246, 248, 241))
             addView(site, FrameLayout.LayoutParams(-1, -1))
             addView(this@MainActivity.overlay, FrameLayout.LayoutParams(-1, -1))
         }
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
-            view.setPadding(0, 0, 0, insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom)
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
         setContentView(root)
@@ -173,18 +176,23 @@ class MainActivity : ComponentActivity() {
             (() => {
               if (window.__tkpstNativeAppearance) return;
               window.__tkpstNativeAppearance = true;
-              const report = () => window.TkpstTheme.appearanceChanged(document.documentElement.dataset.appearance || 'light');
-              new MutationObserver(report).observe(document.documentElement, { attributes: true, attributeFilter: ['data-appearance'] });
+              const report = () => window.TkpstTheme.appearanceChanged(
+                document.documentElement.dataset.appearance || 'light',
+                getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
+              );
+              new MutationObserver(report).observe(document.documentElement, { attributes: true, attributeFilter: ['data-appearance', 'data-theme', 'data-palette'] });
               report();
             })();
         """.trimIndent(), null)
     }
 
     private inner class AppearanceBridge {
-        @JavascriptInterface fun appearanceChanged(value: String) {
+        @JavascriptInterface fun appearanceChanged(value: String, background: String) {
             runOnUiThread {
                 if (isDestroyed) return@runOnUiThread
                 val light = value != "dark"
+                root.setBackgroundColor(runCatching { Color.parseColor(background) }
+                    .getOrDefault(if (light) Color.rgb(246, 248, 241) else Color.rgb(18, 20, 16)))
                 WindowCompat.getInsetsController(window, site).isAppearanceLightStatusBars = light
                 WindowCompat.getInsetsController(window, site).isAppearanceLightNavigationBars = light
             }
