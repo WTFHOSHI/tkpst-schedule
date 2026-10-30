@@ -6,12 +6,14 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
 import ru.yami.tkpst.data.HomeAddress
 import ru.yami.tkpst.data.Settings
 import ru.yami.tkpst.data.ThemeMode
 import ru.yami.tkpst.data.transit.LatLng
 
 @RunWith(RobolectricTestRunner::class)
+@Config(application = android.app.Application::class)
 class MobileSiteTest {
     @Test fun onlyTheAccountHostCanOpenInsideTheApp() {
         assertTrue(MobileSite.isTrusted(MobileSite.START_URL))
