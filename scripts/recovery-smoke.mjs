@@ -26,12 +26,18 @@ try{
   await page.locator('[type=submit]').click();
   await page.locator('[data-logout]').waitFor();
   await page.locator('[data-logout]').click();
+  await page.waitForURL('**/#/login');
   await page.getByRole('link',{name:'Восстановить пароль',exact:true}).click();
+  await page.waitForURL('**/#/reset-password');
+  await page.getByRole('heading',{name:'Восстановить пароль',exact:true}).waitFor();
   assert.equal(await page.locator('input').count(),2);
   await page.locator('[name=username]').fill(username);
   await page.locator('[name=password]').fill(next);
   await page.screenshot({path:'captures/'+width+'-recovery.png',fullPage:true});
+  const resetReply = page.waitForResponse(response => response.url().endsWith('/api/auth/reset-password'), {timeout:10000});
   await page.locator('[type=submit]').click();
+  const resetResult = await resetReply;
+  assert.equal(resetResult.status(),200, await resetResult.text());
   await page.getByRole('button',{name:'Войти',exact:true}).waitFor();
   await page.locator('[name=username]').fill(username);
   await page.locator('[name=password]').fill(old);
