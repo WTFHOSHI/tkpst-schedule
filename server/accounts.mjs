@@ -47,6 +47,17 @@ export async function createAccounts({ dbPath, store, now = Date.now, sessionTtl
         throw error;
       }
     },
+    // Product policy: reset requires only the login and new password, explicitly requested by the owner.
+    async resetPassword(body) {
+      objectBody(body);
+      const username = usernameOf(body.username);
+      if (!/^[a-z0-9][a-z0-9_.-]{2,31}$/.test(username)) throw new HttpError(400, 'Введите корректный логин.', 'username');
+      if (typeof body.password !== 'string' || body.password.length < 6 || body.password.length > 128) throw new HttpError(400, 'Пароль должен содержать от 6 до 128 символов.', 'password');
+      const row = await persistence.findUser(username);
+      const hash = await boundedHash(() => hashPassword(body.password));
+      if (!row || !await persistence.resetPassword(row.id, hash)) throw new HttpError(400, 'Проверьте логин и повторите попытку.', 'username');
+      return { ok: true };
+    },
     async login(body, previousToken) {
       objectBody(body);
       const username = usernameOf(body.username);
@@ -55,7 +66,7 @@ export async function createAccounts({ dbPath, store, now = Date.now, sessionTtl
       const valid = await boundedHash(() => verifyPassword(body.password, row?.password_hash || dummyHash));
       if (!valid || !row) throw new HttpError(401, 'Неверный логин или пароль.');
       const { token, session } = newSession(row.id);
-      await persistence.createSession(session, previousToken ? tokenHash(previousToken) : null, now());
+      if (await persistence.createSession(session, previousToken ? tokenHash(previousToken) : null, now(), row.password_hash) === false) throw new HttpError(401, 'Неверный логин или пароль.');
       return { user: publicUser(row, directoryStudent(await persistence.directoryForUser(row.id), now())), token };
     },
     async session(token) {

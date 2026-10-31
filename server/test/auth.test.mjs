@@ -153,3 +153,35 @@ test('пароли: минимум 6, максимум 128; существующ
     else assert.equal((await created.json()).field, 'password');
   }
 });
+
+
+test('reset by login changes password and revokes all old sessions, without affecting other accounts', async t => {
+  const app = await fixture(t);
+  const a = await app.request('/api/auth/register', {body:registration('reset_one')});
+  const b = await app.request('/api/auth/register', {body:registration('keep_two')});
+  const second = await app.request('/api/auth/login', {body:{username:'reset_one',password}});
+  const reset = await app.request('/api/auth/reset-password', {body:{username:' RESET_ONE ',password:'новый6'}});
+  assert.equal(reset.status,200);
+  for(const cookie of [cookieOf(a),cookieOf(second)]) assert.equal((await (await app.request('/api/auth/session',{cookie})).json()).user,null);
+  assert.equal((await (await app.request('/api/auth/session',{cookie:cookieOf(b)})).json()).user.username,'keep_two');
+  assert.equal((await app.request('/api/auth/login',{body:{username:'reset_one',password}})).status,401);
+  assert.equal((await app.request('/api/auth/login',{body:{username:'reset_one',password:'новый6'}})).status,200);
+  await app.restart();
+  assert.equal((await app.request('/api/auth/login',{body:{username:'reset_one',password:'новый6'}})).status,200);
+});
+
+test('reset rejects malformed requests, short/long passwords and foreign origins', async t => {
+  const app=await fixture(t);
+  for(const body of [null,{}, {username:'x',password:'123456'},{username:'student',password:'12345'},{username:'student',password:'x'.repeat(129)}]) assert.equal((await app.request('/api/auth/reset-password',{body})).status,400);
+  const body={username:'student',password:'123456'};
+  assert.equal((await app.request('/api/auth/reset-password',{body,headers:{Origin:'https://evil.example'}})).status,403);
+  assert.equal((await app.request('/api/auth/reset-password',{method:'GET'})).status,405);
+});
+
+
+test('reset attempts are throttled even when fields are invalid', async t=>{
+ const app=await fixture(t);
+ for(let i=0;i<10;i++)assert.equal((await app.request('/api/auth/reset-password',{body:{username:'student',password:'short'}})).status,400);
+ const limited=await app.request('/api/auth/reset-password',{body:{username:'student',password:'short'}});
+ assert.equal(limited.status,429);assert.ok(Number(limited.headers.get('retry-after'))>0);
+});

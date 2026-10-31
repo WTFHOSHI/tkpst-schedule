@@ -63,6 +63,12 @@ export function createAuthHandler({ accounts, adminHandler, publicOrigin, loginL
         const result = await accounts[action](body, token); setCookie(res, result.token);
         json(res, action === 'register' ? 201 : 200, { user: result.user }); return;
       }
+      if (url.pathname === '/api/auth/reset-password') {
+        const time = now();
+        const rate = await accounts.consumeRateLimit('reset:' + clientAddress(req), 10, 900_000, time);
+        if (!rate.allowed) { res.setHeader('Retry-After', String(rate.retryAfter)); throw new HttpError(429, 'Слишком много попыток. Попробуйте позже.'); }
+        json(res, 200, await accounts.resetPassword(body)); return;
+      }
       if (url.pathname === '/api/auth/logout') { await accounts.logout(token); setCookie(res, null); json(res, 204); return; }
       throw new HttpError(404, 'Адрес API не найден.');
     } catch (error) {

@@ -41,6 +41,12 @@ export function createAuthClient(fetcher = globalThis.fetch.bind(globalThis)) {
       try { const data = await request('auth/' + action, body); user = data.user; status = 'ready'; return state(); }
       finally { mutating = false; }
     },
+    async resetPassword(body) {
+      if (mutating) throw new AuthError('Подождите завершения предыдущего запроса.');
+      ++revision; mutating = true;
+      try { await request('auth/reset-password', body); user = null; status = 'ready'; return state(); }
+      finally { mutating = false; }
+    },
     async logout() {
       if (mutating) throw new AuthError('Подождите завершения предыдущего запроса.');
       ++revision; mutating = true;

@@ -2,22 +2,24 @@ import { escapeHtml as esc, icon } from './ui.js';
 
 export function authFormMarkup(mode) {
   const registering = mode === 'register';
-  const passwordField = (name, label, autocomplete) => `<div class="auth-field"><label for="auth-${name}">${label}</label><span class="auth-input-row"><input id="auth-${name}" name="${name}" type="password" autocomplete="${autocomplete}" ${registering ? 'minlength="6"' : ''} maxlength="128" required aria-describedby="${registering ? 'password-hint' : 'auth-error'}"><button class="password-toggle" type="button" data-password-toggle="${name}" aria-label="Показать ${name === 'confirm' ? 'повтор пароля' : 'пароль'}" aria-pressed="false">${icon('eye')}</button></span></div>`;
+  const resetting = mode === 'reset-password';
+  const passwordField = (name, label, autocomplete) => `<div class="auth-field"><label for="auth-${name}">${label}</label><span class="auth-input-row"><input id="auth-${name}" name="${name}" type="password" autocomplete="${autocomplete}" ${registering || resetting ? 'minlength="6"' : ''} maxlength="128" required aria-describedby="${registering || resetting ? 'password-hint' : 'auth-error'}"><button class="password-toggle" type="button" data-password-toggle="${name}" aria-label="Показать ${name === 'confirm' ? 'повтор пароля' : 'пароль'}" aria-pressed="false">${icon('eye')}</button></span></div>`;
   return `<main class="grades-main auth-main">
     ${registering ? '<p class="auth-intro">После регистрации администратор подтвердит аккаунт.</p>' : ''}
     <form class="auth-form" data-auth-form="${mode}">
-      <fieldset><legend class="sr-only">${registering ? 'Регистрация' : 'Вход'}</legend>
+      <fieldset><legend class="sr-only">${resetting ? 'Восстановление пароля' : registering ? 'Регистрация' : 'Вход'}</legend>
         ${registering ? '<label class="auth-field"><span>Как к вам обращаться</span><input name="displayName" autocomplete="name" minlength="2" maxlength="80" placeholder="Ваше имя" required></label>' : ''}
         <label class="auth-field"><span>Логин</span><input name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" ${registering ? 'pattern="[A-Za-z0-9][A-Za-z0-9_.\\-]{2,31}" minlength="3"' : ''} maxlength="32" placeholder="${registering ? 'Придумайте логин' : 'Введите логин'}" required ${registering ? 'aria-describedby="username-hint"' : ''}></label>
         ${registering ? '<p class="field-hint" id="username-hint">3–32 символа: латинские буквы, цифры, точка, дефис или подчёркивание.</p>' : ''}
-        ${passwordField('password', 'Пароль', registering ? 'new-password' : 'current-password')}
+        ${passwordField('password', resetting ? 'Новый пароль' : 'Пароль', registering || resetting ? 'new-password' : 'current-password')}
+        ${resetting ? '<p class="field-hint" id="password-hint">От 6 до 128 символов.</p>' : ''}
         ${registering ? '<p class="field-hint" id="password-hint">От 6 до 128 символов. Можно использовать длинную фразу.</p>' + passwordField('confirm', 'Повторите пароль', 'new-password') : ''}
         <p class="auth-error" id="auth-error" role="alert" hidden></p>
-        <button class="btn auth-submit" type="submit">${registering ? 'Создать аккаунт' : 'Войти'}</button>
+        <button class="btn auth-submit" type="submit">${resetting ? 'Сохранить новый пароль' : registering ? 'Создать аккаунт' : 'Войти'}</button>
       </fieldset>
     </form>
-    <p class="auth-switch">${registering ? 'Уже есть аккаунт? <a href="#/login">Войти</a>' : 'Нет аккаунта? <a href="#/register">Зарегистрироваться</a>'}</p>
-    ${!registering ? '<p class="field-hint auth-recovery">Восстановление пароля пока не подключено.</p>' : ''}
+    <p class="auth-switch">${resetting ? '<a href="#/login">Вернуться ко входу</a>' : registering ? 'Уже есть аккаунт? <a href="#/login">Войти</a>' : 'Нет аккаунта? <a href="#/register">Зарегистрироваться</a>'}</p>
+    ${!registering && !resetting ? '<p class="auth-recovery"><a href="#/reset-password">Восстановить пароль</a></p>' : ''}
     <a class="auth-public-link" href="#/schedule">Вернуться к расписанию</a>
   </main>`;
 }

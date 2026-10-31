@@ -1,4 +1,4 @@
-name: Build APK + IPA
+name: Release apps and services
 
 on:
   push:
@@ -7,6 +7,10 @@ on:
     paths-ignore: ['web/overrides.json']
   pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.event_name == 'pull_request' && github.ref || 'production' }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -22,12 +26,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm test && npm run build && npm run test:visual
+      - run: npm test && npm run build && npm run test:visual && node scripts/recovery-smoke.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: mobile-visual-check
           path: captures/*.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist/
 
   android:
     runs-on: ubuntu-latest
@@ -123,12 +131,74 @@ jobs:
           name: ios
           path: tkpst-schedule-${{ github.run_number }}.ipa
 
-  # Сайт для iPhone (открывается с ярлыка) — GitHub Pages
+  # APK/IPA are published only after the matching services and Pages are verified.
+  deploy:
+    needs: [web-visual, android, ios]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: team_wX4hcty9r4COOm7Swu4ZJmtu
+      VERCEL_PROJECT_ID: prj_l65yfJSTXnsq28UOd72JhBkcEyrx
+      CLOUDFLARE_ACCOUNT_ID: 96e67c17fe64e93d934322bc6cbdbe71
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Check deployment credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Add CLOUDFLARE_API_TOKEN to repository Actions secrets"; exit 1; }
+          test -n "$VERCEL_TOKEN" || { echo "::error::Add VERCEL_TOKEN to repository Actions secrets"; exit 1; }
+      - run: npm ci
+      - name: Install pinned deployment tools
+        run: npm install --no-save --package-lock=false wrangler@4.156.0 vercel@65.9.0
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: dist/
+      - name: Deploy API from the tested commit
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel deploy --prod --yes --scope miryzzzs-projects --build-env GITHUB_SHA="$GITHUB_SHA" "$GITHUB_RUN_NUMBER" --build-env RELEASE_BUILD="$GITHUB_RUN_NUMBER"
+      - name: Verify API release
+        run: node scripts/verify-release.mjs https://tkpst-schedule.vercel.app "$GITHUB_SHA" "$GITHUB_RUN_NUMBER"
+      - name: Deploy the tested Worker and interface
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy
+      - name: Verify account release
+        run: node scripts/verify-release.mjs https://tkpst-account.telling-math.workers.dev "$GITHUB_SHA" "$GITHUB_RUN_NUMBER"
+
+  pages:
+    needs: deploy
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: dist/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
   release:
-    needs: [android, ios, web-visual]
+    needs: [android, ios, web-visual, deploy, pages]
     permissions:
       contents: write
-    if: always() && github.ref == 'refs/heads/main' && needs.android.result == 'success' && needs.ios.result == 'success' && needs.web-visual.result == 'success'
+    if: always() && github.ref == 'refs/heads/main' && needs.android.result == 'success' && needs.ios.result == 'success' && needs.web-visual.result == 'success' && needs.deploy.result == 'success' && needs.pages.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

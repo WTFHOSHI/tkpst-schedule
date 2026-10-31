@@ -1,0 +1,10 @@
+node_modules
+.git
+captures
+app
+ios
+design
+docs
+.github
+.env*
+server/.data

@@ -39,7 +39,16 @@ export function createSQLiteStore(dbPath) {
       db.prepare('INSERT INTO users (id, username, display_name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)').run(user.id, user.username, user.display_name, user.password_hash, user.created_at);
       sessionStatements(session, previousHash, now);
     }),
-    createSession: (session, previousHash, now) => transaction(() => sessionStatements(session, previousHash, now)),
+    resetPassword: (id, hash) => transaction(() => {
+      const updated = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, id);
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+      return updated.changes === 1;
+    }),
+    createSession: (session, previousHash, now, expectedHash) => transaction(() => {
+      if (expectedHash && db.prepare('SELECT password_hash FROM users WHERE id = ?').get(session.userId)?.password_hash !== expectedHash) return false;
+      sessionStatements(session, previousHash, now);
+      return true;
+    }),
     sessionUser: (hash, now) => db.prepare('SELECT users.* FROM sessions JOIN users ON users.id = sessions.user_id WHERE sessions.token_hash = ? AND sessions.expires_at > ?').get(hash, now) || null,
     deleteSession: hash => db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hash),
     consumeRateLimit: (bucket, limit, window, now) => transaction(() => {

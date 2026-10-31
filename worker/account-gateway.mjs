@@ -5,7 +5,7 @@ const SCHEDULE_ORIGIN = 'https://api.thisishyum.ru';
 const PUBLIC_ORIGIN = 'https://wtfhoshi.github.io';
 const ACCOUNT_PATHS = new Set([
   '/api/auth/session', '/api/auth/login', '/api/auth/register', '/api/auth/logout',
-  '/api/account', '/api/grades', '/api/attendance',
+  '/api/auth/reset-password', '/api/account', '/api/grades', '/api/attendance',
 ]);
 
 const error = (status, message) => Response.json({ error: message }, {

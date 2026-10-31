@@ -10,6 +10,7 @@ import {
 import { icon, bottomNav } from './ui.js';
 import { gradesMarkup, subjectMarkup } from './grades-view.js';
 import { auth } from './auth-client.js';
+import { currentDiagnostics, reportText } from './support.js';
 import { authFormMarkup, signedOutMarkup, profileMarkup } from './auth-view.js';
 import { attendanceModel, currentMonth, shiftMonth, subjectTitlesForDay, validMonth } from './attendance.js';
 import { attendanceMarkup } from './attendance-view.js';
@@ -65,7 +66,7 @@ applyTheme();
 
 let tick = null;        // функция, вызываемая каждую секунду на текущем экране
 let cleanup = null;     // остановка таймеров экрана
-const routes = { '': schedule, schedule, buses, address, settings, grades, account, login, register, demo };
+const routes = { '': schedule, schedule, buses, address, settings, grades, account, login, register, 'reset-password': resetPassword, demo };
 let currentSection = 'schedule';
 let selectedSemester = '2026-1';
 let selectedAttendanceMonth = currentMonth();
@@ -85,7 +86,7 @@ function render() {
   if (!Object.hasOwn(routes, path) && primary !== 'subject' && !demoSubject) currentSection = 'schedule';
   if (['schedule', 'grades', 'buses'].includes(primary)) currentSection = primary;
   if (!path) currentSection = 'schedule';
-  if (['subject', 'account', 'login', 'register', 'demo'].includes(primary)) currentSection = 'grades';
+  if (['subject', 'account', 'login', 'register', 'reset-password', 'demo'].includes(primary)) currentSection = 'grades';
   if (primary === 'address') currentSection = 'buses';
   $app.dataset.page = Object.hasOwn(routes, path) || primary === 'subject' || demoSubject ? primary || 'schedule' : 'schedule';
   if (staticHosting && authPages.has(primary)) cloudAccount();
@@ -140,7 +141,7 @@ function announcementHtml() {
 
 // ---------------- Личный кабинет ----------------
 
-const authPages = new Set(['grades', 'subject', 'account', 'login', 'register']);
+const authPages = new Set(['grades', 'subject', 'account', 'login', 'register', 'reset-password']);
 const currentPath = () => location.hash.replace(/^#\/?/, '').split('/')[0];
 function cloudAccount() { location.replace(accountOrigin + '/' + (location.hash || '#/account')); }
 function sessionLoading(title) {
@@ -158,9 +159,10 @@ function requireAccount(title) {
 
 function login() { authPage('login'); }
 function register() { authPage('register'); }
+function resetPassword() { authPage('reset-password'); }
 function authPage(mode) {
   if (auth.state().user) { go('account'); return; }
-  $app.innerHTML = topBar(mode === 'register' ? 'Создать аккаунт' : 'Личный кабинет', mode === 'register' ? 'Регистрация' : 'Вход в аккаунт') + authFormMarkup(mode);
+  $app.innerHTML = topBar(mode === 'reset-password' ? 'Восстановить пароль' : mode === 'register' ? 'Создать аккаунт' : 'Личный кабинет', mode === 'reset-password' ? 'Введите логин и новый пароль' : mode === 'register' ? 'Регистрация' : 'Вход в аккаунт') + authFormMarkup(mode);
   const form = $app.querySelector('[data-auth-form]');
   const fieldset = form.querySelector('fieldset');
   const submit = form.querySelector('[type=submit]');
@@ -192,12 +194,16 @@ function authPage(mode) {
     const version = viewVersion;
     const label = submit.textContent;
     let focusAfter = null;
-    fieldset.disabled = true; submit.textContent = mode === 'register' ? 'Создаём аккаунт…' : 'Входим…';
+    fieldset.disabled = true; submit.textContent = mode === 'reset-password' ? 'Сохраняем…' : mode === 'register' ? 'Создаём аккаунт…' : 'Входим…';
     form.setAttribute('aria-busy', 'true'); errorBox.hidden = true;
     try {
-      await auth.authenticate(mode, body);
+      if (mode === 'reset-password') await auth.resetPassword(body);
+      else await auth.authenticate(mode, body);
       form.reset();
-      if (version === viewVersion) go('account');
+      if (version === viewVersion) {
+        if (mode === 'reset-password') { go('login'); toast('Пароль изменён. Войдите с новым паролем.'); }
+        else go('account');
+      }
       else if (authPages.has(currentPath())) render();
     } catch (error) {
       if (version !== viewVersion) return;
@@ -1035,6 +1041,19 @@ function settings() {
   $app.innerHTML = `
     ${topBar('Настройки', null)}
     <main class="list form">
+      <h3 class="section">О приложении</h3>
+      <div class="card">
+        <div>Приложение: ${esc(currentDiagnostics().appVersion)} · сборка ${esc(currentDiagnostics().appBuild)}</div>
+        <div class="muted small">Интерфейс: ${esc(currentDiagnostics().webVersion)} · ${esc(currentDiagnostics().commit.slice(0, 8))}</div>
+        <button class="btn outline" data-report>Сообщить об ошибке</button>
+        <div data-report-preview hidden>
+          <p class="field-hint">Добавлены только версии приложения, системы и движка. Проверьте текст перед отправкой.</p>
+          <label class="field"><span class="sr-only">Текст сообщения об ошибке</span><textarea data-report-text rows="12"></textarea></label>
+          <button class="btn" data-report-copy>Скопировать сообщение</button>
+          <button class="btn outline" data-report-share>Поделиться</button>
+          <p role="status" data-report-status></p>
+        </div>
+      </div>
       <h3 class="section">Цветовая тема</h3>
       <div class="theme-grid" role="radiogroup" aria-label="Цветовая тема">${paletteOptions.map(color).join('')}</div>
       <h3 class="section">Режим</h3>
@@ -1054,6 +1073,24 @@ function settings() {
   $app.querySelectorAll('input[name=palette]').forEach((r) => { r.onchange = () => { store.set('palette', r.value); applyTheme(); }; });
   $app.querySelector('[data-clear]').onclick = (e) => { clearScheduleCache(); e.target.textContent = 'Очищено'; e.target.disabled = true; };
   $app.querySelector('[data-addr]').onclick = () => go('address');
+  const report = $app.querySelector('[data-report-preview]');
+  const text = $app.querySelector('[data-report-text]');
+  const status = $app.querySelector('[data-report-status]');
+  $app.querySelector('[data-report]').onclick = () => {
+    report.hidden = !report.hidden;
+    if (!report.hidden && !text.value) text.value = reportText(currentDiagnostics());
+  };
+  $app.querySelector('[data-report-copy]').onclick = async () => {
+    try { await navigator.clipboard.writeText(text.value); status.textContent = 'Сообщение скопировано.'; }
+    catch { text.focus(); text.select(); status.textContent = 'Выделен текст сообщения. Скопируйте его вручную.'; }
+  };
+  const share = $app.querySelector('[data-report-share]');
+  share.hidden = !navigator.share;
+  share.onclick = async () => {
+    try { await navigator.share({ title: 'Ошибка ТКПСТ', text: text.value }); }
+    catch (error) { if (error.name !== 'AbortError') status.textContent = 'Не удалось отправить. Скопируйте сообщение.'; }
+  };
+
 }
 
 // ---------------- Запуск ----------------

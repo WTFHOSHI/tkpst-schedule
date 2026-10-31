@@ -1,0 +1,61 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, rm, mkdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { chromium } from 'playwright';
+import { createAuthServer } from '../server/http.mjs';
+const dir=await mkdtemp(join(tmpdir(),'tkpst-recovery-browser-'));
+const origin='http://127.0.0.1:4193';
+const app=await createAuthServer({dbPath:join(dir,'accounts.sqlite'),publicOrigin:origin});
+await new Promise(resolve=>app.server.listen(4193,'127.0.0.1',resolve));
+const browser=await chromium.launch(process.env.PLAYWRIGHT_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_EXECUTABLE_PATH}:{});
+const errors=[];
+await mkdir('captures',{recursive:true});
+try{
+ for(const width of [320,390,430]){
+  const context=await browser.newContext({viewport:{width,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block',permissions:['clipboard-read','clipboard-write']});
+  await context.addInitScript(()=>{window.TkpstTheme={getAppInfo:()=>JSON.stringify({platform:'Android',osVersion:'15',appVersion:'1.1.63',build:'63',engine:'WebView 150.0'})};});
+  await context.route('https://**',route=>route.fulfill({status:200,contentType:'application/json',body:'{}'}));
+  const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
+  const username='qa_'+width,old='test-old-password',next='пароль';
+  await page.goto(origin+'/#/register');
+  await page.locator('[name=displayName]').fill('Тест');
+  await page.locator('[name=username]').fill(username);
+  await page.locator('[name=password]').fill(old);
+  await page.locator('[name=confirm]').fill(old);
+  await page.locator('[type=submit]').click();
+  await page.locator('[data-logout]').waitFor();
+  await page.locator('[data-logout]').click();
+  await page.getByRole('link',{name:'Восстановить пароль',exact:true}).click();
+  assert.equal(await page.locator('input').count(),2);
+  await page.locator('[name=username]').fill(username);
+  await page.locator('[name=password]').fill(next);
+  await page.screenshot({path:'captures/'+width+'-recovery.png',fullPage:true});
+  await page.locator('[type=submit]').click();
+  await page.getByRole('button',{name:'Войти',exact:true}).waitFor();
+  await page.locator('[name=username]').fill(username);
+  await page.locator('[name=password]').fill(old);
+  await page.locator('[type=submit]').click();
+  await page.getByText('Неверный логин или пароль.',{exact:true}).waitFor();
+  await page.locator('[name=password]').fill(next);
+  await page.locator('[type=submit]').click();
+  await page.locator('[data-logout]').waitFor();
+  await page.goto(origin+'/#/settings');
+  await page.locator('[data-report]').click();
+  const text=await page.locator('[data-report-text]').inputValue();
+  assert.ok(text.includes('1.1.63'));assert.ok(text.includes('WebView 150.0'));
+  assert.ok(!text.includes(username));assert.ok(!text.includes(next));assert.ok(!text.includes(old));
+  await page.locator('[data-report-copy]').click();
+  await page.getByText('Сообщение скопировано.',{exact:true}).waitFor();
+  const bounds=await page.evaluate(()=>({width:innerWidth,doc:document.documentElement.scrollWidth}));
+  assert.ok(bounds.doc<=bounds.width+1);
+  await page.screenshot({path:'captures/'+width+'-support.png',fullPage:true});
+  await page.locator('[data-report-text]').blur();
+  await context.close();
+  console.log('Recovery and diagnostics passed at '+width+'px');
+ }
+ assert.deepEqual(errors,[]);
+}finally{
+ await browser.close();app.server.closeAllConnections();
+ await new Promise(resolve=>app.server.close(resolve));app.close();await rm(dir,{recursive:true,force:true});
+}

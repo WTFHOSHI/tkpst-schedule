@@ -23,6 +23,11 @@ test('Postgres: два экземпляра разделяют пользова�
   assert.equal(await first.session(created.token), null);
   assert.equal((await first.session(login.token)).id, created.user.id);
   await first.logout(login.token); assert.equal(await second.session(login.token), null);
+  const oldSession = await first.login({username:'student',password:credentials.password});
+  await second.resetPassword({username:'STUDENT',password:'новый6'});
+  assert.equal(await first.session(oldSession.token),null);
+  await assert.rejects(first.login({username:'student',password:credentials.password}),error=>error.status===401);
+  assert.ok((await first.login({username:'student',password:'новый6'})).token);
   assert.equal((await first.consumeRateLimit('shared', 2, 1000, 1)).allowed, true);
   assert.equal((await second.consumeRateLimit('shared', 2, 1000, 2)).allowed, true);
   assert.equal((await first.consumeRateLimit('shared', 2, 1000, 3)).allowed, false);

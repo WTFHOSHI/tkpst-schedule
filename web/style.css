@@ -516,3 +516,5 @@ h1, h2, h3, p { overflow-wrap: anywhere; }
 .attendance-grade-note { padding: 8px 0 30px; }
 .attendance-grade-note h2 { font-size: 20px; }
 .attendance-grade-note .auth-public-link { margin-top: 6px; font-size: 14px; }
+
+[data-report-text] { width: 100%; min-height: 240px; resize: vertical; border: 1px solid var(--outline); border-radius: 12px; background: var(--bg); color: var(--text); padding: 12px; font: inherit; font-size: 14px; }

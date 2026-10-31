@@ -1,10 +1,21 @@
-import { cp, mkdir, rm } from 'node:fs/promises';
+import { cp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { basename, dirname, join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { releaseVersion } from './version.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const out = join(root, 'dist');
 if (dirname(out) !== root.replace(/[\\/]$/, '') || basename(out) !== 'dist') throw new Error('Unsafe output path.');
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 for (const entry of ['index.html','style.css','sw.js','manifest.webmanifest','overrides.json','js','icons']) await cp(join(root,'web',entry),join(out,entry),{recursive:true});
+let commit = process.env.GITHUB_SHA || process.env.VERCEL_GIT_COMMIT_SHA;
+if (!commit) { try { commit = execFileSync(process.env.GIT_EXECUTABLE || 'git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { commit = 'development'; } }
+const version = releaseVersion(commit, process.env.RELEASE_BUILD || process.env.GITHUB_RUN_NUMBER || 'local');
+await writeFile(join(out, 'version.json'), JSON.stringify(version));
+await writeFile(join(out, 'js/version.js'), 'export const version = Object.freeze(' + JSON.stringify(version) + ');\n');
+const worker = await readFile(join(out, 'sw.js'), 'utf8');
+await writeFile(join(out, 'sw.js'), worker.replace(/tkpst-shell-v[0-9]+/, 'tkpst-shell-' + version.commit + '-' + version.build));
+const html = await readFile(join(out, 'index.html'), 'utf8');
+await writeFile(join(out, 'index.html'), html.replace('src="js/app.js"', 'src="js/app.js?v=' + version.commit + '"'));
 console.log('Static application built in dist/. Private server files excluded.');

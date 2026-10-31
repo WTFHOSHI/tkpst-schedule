@@ -63,6 +63,7 @@ struct MobileWebView: UIViewRepresentable {
         config.websiteDataStore = .default()
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         let scripts = config.userContentController
+        scripts.addUserScript(WKUserScript(source: diagnosticScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
         scripts.addUserScript(WKUserScript(source: migrationScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
         scripts.addUserScript(WKUserScript(source: appearanceScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         scripts.add(context.coordinator, name: "tkpstAppearance")
@@ -88,6 +89,17 @@ struct MobileWebView: UIViewRepresentable {
                 settings.pendingRoute = nil
             }
         }
+    }
+
+    private func diagnosticScript() -> String {
+        let info: [String: String] = [
+            "platform": "iOS", "osVersion": UIDevice.current.systemVersion,
+            "appVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
+            "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown",
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: info),
+              let literal = String(data: data, encoding: .utf8) else { return "" }
+        return "window.__tkpstNativeInfo = \(literal);"
     }
 
     private func migrationScript() -> String {

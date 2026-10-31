@@ -25,7 +25,20 @@ export function createPostgresStore(driver) {
     ...createAttendanceStore(driver),
     findUser: async username => (await driver.query('SELECT * FROM users WHERE username = $1', [username]))[0] || null,
     createUserWithSession: (user, session, previousHash, now) => driver.transaction([insertUser(user), ...sessionStatements(session, previousHash, now)]),
-    createSession: (session, previousHash, now) => driver.transaction(sessionStatements(session, previousHash, now)),
+    async resetPassword(id, hash) {
+      const result = await driver.transaction([
+        { text: 'UPDATE users SET password_hash = $2 WHERE id = $1 RETURNING id', params: [id, hash] },
+        { text: 'DELETE FROM sessions WHERE user_id = $1', params: [id] },
+      ]);
+      return result[0].length === 1;
+    },
+    async createSession(session, previousHash, now, expectedHash) {
+      if (!expectedHash) return driver.transaction(sessionStatements(session, previousHash, now));
+      const statements = sessionStatements(session, previousHash, now);
+      statements[statements.length - 1] = { text: 'INSERT INTO sessions (token_hash, user_id, expires_at) SELECT $1, id, $3 FROM users WHERE id = $2 AND password_hash = $4 RETURNING token_hash', params: [session.tokenHash, session.userId, session.expiresAt, expectedHash] };
+      const result = await driver.transaction([{ text: 'SELECT id FROM users WHERE id = $1 FOR UPDATE', params: [session.userId] }, ...statements]);
+      return result[result.length - 1].length === 1;
+    },
     sessionUser: async (hash, now) => (await driver.query('SELECT users.* FROM sessions JOIN users ON users.id = sessions.user_id WHERE sessions.token_hash = $1 AND sessions.expires_at > $2', [hash, now]))[0] || null,
     deleteSession: hash => driver.query('DELETE FROM sessions WHERE token_hash = $1', [hash]),
     async consumeRateLimit(bucket, limit, window, now) {

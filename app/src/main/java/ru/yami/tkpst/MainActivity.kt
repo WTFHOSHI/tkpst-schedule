@@ -186,6 +186,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private inner class AppearanceBridge {
+        @JavascriptInterface fun getAppInfo(): String = org.json.JSONObject()
+            .put("platform", "Android")
+            .put("osVersion", Build.VERSION.RELEASE)
+            .put("appVersion", BuildConfig.VERSION_NAME)
+            .put("build", BuildConfig.VERSION_CODE.toString())
+            .put("engine", "WebView " + (WebView.getCurrentWebViewPackage()?.versionName ?: "unknown"))
+            .toString()
+
         @JavascriptInterface fun appearanceChanged(value: String, background: String) {
             runOnUiThread {
                 if (isDestroyed) return@runOnUiThread
