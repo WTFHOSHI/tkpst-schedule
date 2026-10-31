@@ -34,7 +34,7 @@ export async function createAccounts({ dbPath, store, now = Date.now, sessionTtl
       const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
       if (!/^[a-z0-9][a-z0-9_.-]{2,31}$/.test(username)) throw new HttpError(400, 'Логин: 3–32 символа, латинские буквы, цифры, точка, дефис или подчёркивание.', 'username');
       if (displayName.length < 2 || displayName.length > 80 || /[\u0000-\u001f\u007f]/.test(displayName)) throw new HttpError(400, 'Укажите имя длиной от 2 до 80 символов.', 'displayName');
-      if (typeof body.password !== 'string' || body.password.length < 12 || body.password.length > 128) throw new HttpError(400, 'Пароль должен содержать от 12 до 128 символов.', 'password');
+      if (typeof body.password !== 'string' || body.password.length < 6 || body.password.length > 128) throw new HttpError(400, 'Пароль должен содержать от 6 до 128 символов.', 'password');
       const hash = await boundedHash(() => hashPassword(body.password));
       const id = randomUUID();
       const row = { id, username, display_name: displayName, password_hash: hash, created_at: now() };

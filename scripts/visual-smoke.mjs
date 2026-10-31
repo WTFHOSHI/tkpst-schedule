@@ -51,7 +51,24 @@ try {
       target.on('pageerror', error => errors.push(`${width}px ${route}: ${error.message}`));
       await target.goto(`${base}/#/${route}`, { waitUntil: 'domcontentloaded' });
       await target.getByRole('heading', { name: expected, exact: true }).first().waitFor();
-      if (route === 'login') await target.locator('form[data-auth-form] input[type=password]').waitFor();
+      if (route === 'login') {
+        const password = target.locator('input[name=password]');
+        await password.waitFor();
+        await target.locator('input[name=username]').fill('student');
+        await password.fill('Пароль6');
+        await target.setViewportSize({ width, height: 460 });
+        await password.fill('Пароль7');
+        assert.equal(await password.inputValue(), 'Пароль7');
+        assert.equal(await password.evaluate(input => input === document.activeElement), true);
+        await target.locator('[data-password-toggle=password]').click();
+        assert.equal(await password.getAttribute('type'), 'text');
+        assert.equal(await password.evaluate(input => input === document.activeElement), true, 'password toggle must retain input focus');
+        await target.locator('[data-password-toggle=password]').click();
+        assert.equal(await password.getAttribute('type'), 'password');
+        await password.fill('');
+        await password.blur();
+        await target.setViewportSize({ width, height: 844 });
+      }
       if (route === 'account') await target.getByText('Настройки приложения').waitFor();
       if (route === 'grades') await target.getByText('История', { exact: true }).waitFor();
       await target.waitForTimeout(150);
@@ -78,5 +95,6 @@ try {
   assert.deepEqual(errors, []);
 } finally {
   await browser.close();
+  server.closeAllConnections();
   await new Promise(resolve => server.close(resolve));
 }

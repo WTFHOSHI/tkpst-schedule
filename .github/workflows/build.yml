@@ -5,10 +5,11 @@ on:
     branches: [main]
     # правки из админ-панели меняют только данные — APK/IPA пересобирать не нужно
     paths-ignore: ['web/overrides.json']
+  pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   web-visual:
@@ -125,7 +126,9 @@ jobs:
   # Сайт для iPhone (открывается с ярлыка) — GitHub Pages
   release:
     needs: [android, ios, web-visual]
-    if: always() && needs.android.result == 'success' && needs.ios.result == 'success' && needs.web-visual.result == 'success'
+    permissions:
+      contents: write
+    if: always() && github.ref == 'refs/heads/main' && needs.android.result == 'success' && needs.ios.result == 'success' && needs.web-visual.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

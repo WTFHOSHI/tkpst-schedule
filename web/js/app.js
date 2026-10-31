@@ -168,10 +168,14 @@ function authPage(mode) {
   const password = form.elements.namedItem('password');
   const confirm = form.elements.namedItem('confirm');
   form.querySelectorAll('[data-password-toggle]').forEach(button => {
+    button.onpointerdown = event => event.preventDefault();
     button.onclick = () => {
       const input = form.elements.namedItem(button.dataset.passwordToggle);
+      const start = input.selectionStart, end = input.selectionEnd;
       const showing = input.type === 'password';
       input.type = showing ? 'text' : 'password';
+      input.focus({ preventScroll: true });
+      if (start !== null && end !== null) input.setSelectionRange(start, end);
       button.innerHTML = icon(showing ? 'eye-off' : 'eye');
       button.setAttribute('aria-pressed', String(showing));
       button.setAttribute('aria-label', `${showing ? 'Скрыть' : 'Показать'} ${button.dataset.passwordToggle === 'confirm' ? 'повтор пароля' : 'пароль'}`);
@@ -1075,7 +1079,7 @@ if (!staticHosting) auth.restore().then(() => {
   const path = currentPath();
   if (!authPages.has(path)) return;
   // Keep text already entered in the login form when a background session check ends.
-  if ((path === 'login' || path === 'register') && !auth.state().user) return;
+  if ($app.querySelector('[data-auth-form]') && !auth.state().user) return;
   render();
 });
 document.addEventListener('visibilitychange', async () => {
@@ -1085,5 +1089,5 @@ document.addEventListener('visibilitychange', async () => {
   const after = auth.state();
   const path = currentPath();
   if ((before.user?.id !== after.user?.id || before.status !== after.status) && authPages.has(path)
-    && (path !== 'login' && path !== 'register' || after.user)) render();
+    && (!$app.querySelector('[data-auth-form]') || after.user)) render();
 });

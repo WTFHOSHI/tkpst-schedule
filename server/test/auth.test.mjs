@@ -140,3 +140,16 @@ test('старый офлайн-worker не может получить прив
     assert.ok(!(await r.text()).includes('student_one'));
   }
 });
+
+
+test('пароли: минимум 6, максимум 128; существующие длинные пароли работают', async t => {
+  const app = await fixture(t);
+  for (const [i, value] of ['12345', '123456', 'пароль', 'x'.repeat(128), 'x'.repeat(129)].entries()) {
+    const valid = value.length >= 6 && value.length <= 128;
+    const body = { ...registration('boundary_' + i), password: value };
+    const created = await app.request('/api/auth/register', { body });
+    assert.equal(created.status, valid ? 201 : 400, 'length=' + value.length);
+    if (valid) assert.equal((await app.request('/api/auth/login', { body: { username: body.username, password: value } })).status, 200);
+    else assert.equal((await created.json()).field, 'password');
+  }
+});

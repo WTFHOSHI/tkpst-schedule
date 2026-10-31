@@ -2,6 +2,7 @@ package ru.yami.tkpst
 
 import android.Manifest
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
@@ -30,7 +31,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
 import ru.yami.tkpst.data.ScheduleNotifier
 
 class MainActivity : ComponentActivity() {
@@ -150,11 +150,10 @@ class MainActivity : ComponentActivity() {
             addView(this@MainActivity.overlay, FrameLayout.LayoutParams(-1, -1))
         }
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            insets
+            MobileInsets.apply(view, insets)
         }
         setContentView(root)
+        ViewCompat.requestApplyInsets(root)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (site.canGoBack()) site.goBack() else finish()
@@ -212,6 +211,13 @@ class MainActivity : ComponentActivity() {
         if (intent.getStringExtra(ScheduleNotifier.EXTRA_OPEN) == "schedule") {
             site.evaluateJavascript("location.hash = '#/schedule'", null)
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Keep the same focused WebView and input connection when the keyboard/window changes.
+        site.invalidate()
+        ViewCompat.requestApplyInsets(root)
     }
 
     override fun onPause() { super.onPause(); if (::site.isInitialized) site.onPause() }
