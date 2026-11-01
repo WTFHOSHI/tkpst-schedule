@@ -1,8 +1,9 @@
 {
   "announcement": "",
-  "updatedAt": "2026-11-01T19:40:31.441Z",
+  "updatedAt": "2026-11-01T19:43:38.919Z",
   "days": {
     "2026-11-02": {
+      "note": "Классного часа не будет утром",
       "pairs": [],
       "flag": false,
       "classHour": false
