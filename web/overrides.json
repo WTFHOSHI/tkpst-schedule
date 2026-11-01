@@ -1,6 +1,6 @@
 {
   "announcement": "",
-  "updatedAt": "2026-10-29T13:55:22.281Z",
+  "updatedAt": "2026-11-01T17:54:43.705Z",
   "days": {
     "2026-10-30": {
       "pairs": [
@@ -17,6 +17,11 @@
           "teacher": "Вохменина Е.Ф."
         }
       ]
+    },
+    "2026-11-02": {
+      "pairs": [],
+      "flag": false,
+      "classHour": false
     }
   }
 }
