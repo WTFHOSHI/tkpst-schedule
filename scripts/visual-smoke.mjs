@@ -22,7 +22,10 @@ const base = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {});
 const lessons = [{ title: 'История', cabinet: '306', teacher: 'Ильина Т.В.', order: 3, startTime: '10:10:00', endTime: '11:40:00' }];
 const month = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Yekaterinburg', year: 'numeric', month: '2-digit' }).format(new Date()).slice(0, 7);
-const day = `${month}-15`;
+// The attendance fixture must be a teaching weekday, including after month changes.
+const fixtureDate = new Date(`${month}-15T12:00:00Z`);
+while ([0, 6].includes(fixtureDate.getUTCDay())) fixtureDate.setUTCDate(fixtureDate.getUTCDate() + 1);
+const day = fixtureDate.toISOString().slice(0, 10);
 const errors = [];
 await mkdir('captures', { recursive: true });
 
@@ -30,6 +33,8 @@ try {
   for (const width of [320, 390, 430]) {
     const context = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
     await context.addInitScript(() => localStorage.setItem('group_id', '196'));
+    await context.route('https://raw.githubusercontent.com/WTFHOSHI/tkpst-schedule/main/web/overrides.json*', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ updatedAt: '2026-01-01T00:00:00Z', days: {} }) }));
     let signedIn = true;
     await context.route('**/api/**', route => {
       const path = new URL(route.request().url()).pathname;
