@@ -1,0 +1,44 @@
+# Installed apps read this file from Pages. Admin data must publish without
+# rebuilding native apps or depending on Vercel/Cloudflare deployment secrets.
+name: Publish site and schedule
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  pages:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: tkpst-pages-production
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Test and build the checked-out source
+        run: |
+          export GITHUB_SHA="$(git rev-parse HEAD)"
+          npm test && npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/
+      - id: deploy
+        uses: actions/deploy-pages@v4
+      - name: Verify published schedule
+        run: node scripts/verify-schedule.mjs

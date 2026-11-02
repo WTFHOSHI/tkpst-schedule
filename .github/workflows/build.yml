@@ -163,7 +163,7 @@ jobs:
       - name: Deploy API from the tested commit
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: npx vercel deploy --prod --yes --scope miryzzzs-projects --build-env GITHUB_SHA="$GITHUB_SHA" "$GITHUB_RUN_NUMBER" --build-env RELEASE_BUILD="$GITHUB_RUN_NUMBER"
+        run: npx vercel deploy --prod --yes --scope miryzzzs-projects --build-env GITHUB_SHA="$GITHUB_SHA" --build-env RELEASE_BUILD="$GITHUB_RUN_NUMBER"
       - name: Verify API release
         run: node scripts/verify-release.mjs https://tkpst-schedule.vercel.app "$GITHUB_SHA" "$GITHUB_RUN_NUMBER"
       - name: Deploy the tested Worker and interface
@@ -173,26 +173,19 @@ jobs:
       - name: Verify account release
         run: node scripts/verify-release.mjs https://tkpst-account.telling-math.workers.dev "$GITHUB_SHA" "$GITHUB_RUN_NUMBER"
 
+  # Publication is owned by schedule-data.yml, independent of backend credentials.
+  # Native releases still require Pages from the matching tested source commit.
   pages:
-    needs: deploy
+    name: Verify published Pages
+    needs: web-visual
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          name: web-dist
-          path: dist/
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist/
-      - id: deploy
-        uses: actions/deploy-pages@v4
+          node-version: 24
+      - run: node scripts/verify-schedule.mjs --commit "$GITHUB_SHA"
 
   release:
     needs: [android, ios, web-visual, deploy, pages]
