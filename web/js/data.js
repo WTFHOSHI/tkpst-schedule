@@ -34,16 +34,23 @@ export function initOverrides() { setOverrides(store.get('overrides')); }
 
 /** Скачать свежие изменения. true — что-то поменялось. */
 export async function refreshOverrides() {
-  try {
-    const overridesUrl = location.hostname.endsWith('.workers.dev')
-      ? 'https://wtfhoshi.github.io/tkpst-schedule/overrides.json'
-      : 'overrides.json';
-    const j = await getJson(`${overridesUrl}?t=${Date.now()}`, 8000);
-    if (!j || typeof j !== 'object') return false;
-    const changed = JSON.stringify(j) !== JSON.stringify(store.get('overrides'));
-    if (changed) { store.set('overrides', j); setOverrides(j); }
-    return changed;
-  } catch { return false; }
+  const pagesUrl = location.hostname.endsWith('.workers.dev')
+    ? 'https://wtfhoshi.github.io/tkpst-schedule/overrides.json'
+    : 'overrides.json';
+  const urls = ['https://raw.githubusercontent.com/WTFHOSHI/tkpst-schedule/main/web/overrides.json', pagesUrl];
+  for (const url of urls) {
+    try {
+      const j = await getJson(`${url}?t=${Date.now()}`, 8000);
+      if (!j || typeof j !== 'object' || Array.isArray(j) || !j.days || typeof j.days !== 'object' || Array.isArray(j.days)) continue;
+      const old = store.get('overrides');
+      // A delayed Pages publication must not undo already received admin changes.
+      if (old?.updatedAt && (!j.updatedAt || Date.parse(j.updatedAt) < Date.parse(old.updatedAt))) continue;
+      const changed = JSON.stringify(j) !== JSON.stringify(old);
+      if (changed) { store.set('overrides', j); setOverrides(j); }
+      return changed;
+    } catch { /* Try the other public copy; keep cached data if both fail. */ }
+  }
+  return false;
 }
 
 // ---------------- Расписание пар ----------------
@@ -56,11 +63,17 @@ const KEEP_DAYS = 14;
 const norm = (s) => s.replace(/\s/g, '').toUpperCase();
 
 async function scheduleJson(path) {
+  const read = async base => {
+    const body = await getJson(base + path, base === PROXY_SCHED ? 10000 : 15000);
+    // An HTTP 200 carrying an API error is not a successful schedule response.
+    if (path.includes('/schedules?')) parseLessons(body);
+    return body;
+  };
   if (location.hostname === 'wtfhoshi.github.io' || location.hostname.endsWith('.workers.dev')) {
-    try { return await getJson(PROXY_SCHED + path, 10000); }
+    try { return await read(PROXY_SCHED); }
     catch { /* The original public API is still a fallback. */ }
   }
-  return getJson(DIRECT_SCHED + path);
+  return read(DIRECT_SCHED);
 }
 
 async function groupId() {
