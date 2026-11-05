@@ -3,7 +3,7 @@ import { T, buildTimeline } from './core.js';
 export const MIN_MONTH = '2000-01';
 export const MAX_MONTH = '2100-12';
 export const ATTENDANCE_STATUSES = Object.freeze({
-  P: 'Был', N: 'Прогул', B: 'Болезнь', U: 'Уважительная', R: 'Работа', Z: 'Заявление',
+  P: 'Был', N: 'Прогул', B: 'Болезнь', U: 'Уважительная', R: 'Работа', Z: 'По заявлению',
 });
 
 export function validMonth(month) {
