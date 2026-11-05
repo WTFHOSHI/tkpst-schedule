@@ -60,7 +60,7 @@ test('journal lists only absences and separates grades into another tab', async 
     linked: true, syncedAt: '2026-10-27T10:00:00Z',
     records: ['P', 'N', 'B', 'U', 'R', 'Z'].map((status, i) => ({ date: '2026-10-26', pair: i + 1, status })),
   } });
-  for (const label of ['Прогул', 'Болезнь', 'Уважительная', 'Работа', 'Заявление']) assert.match(html, new RegExp(label));
+  for (const label of ['Прогул', 'Болезнь', 'Уважительная', 'Работа', 'По заявлению']) assert.match(html, new RegExp(label));
   assert.doesNotMatch(html, /1-я пара|>Был</);
   assert.match(html, /6-я пара/);
   assert.match(html, /5 пропусков/);
