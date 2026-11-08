@@ -1,6 +1,6 @@
 {
   "announcement": "",
-  "updatedAt": "2026-11-08T13:04:57.897Z",
+  "updatedAt": "2026-11-08T14:41:49.932Z",
   "days": {
     "2026-11-09": {
       "pairs": [
@@ -8,7 +8,8 @@
           "number": 6,
           "status": "cancelled"
         }
-      ]
+      ],
+      "classHour": false
     }
   }
 }
