@@ -42,19 +42,32 @@ const paletteOptions = [
   ['ocean', 'Синяя', '#285A91'],
   ['violet', 'Лиловая', '#6A4EA3'],
   ['sand', 'Тёплая', '#8B5319'],
+  ['rose', 'Розовая', '#A8455F'],
+  ['teal', 'Бирюзовая', '#1F6F6B'],
   ['mono', 'Чёрно-белая', 'linear-gradient(90deg, #161616 50%, #fff 50%)'],
 ];
+// Стиль оформления меняет форму, шрифт и поверхности; цвет и режим выбираются отдельно.
+const styleOptions = [
+  ['calm', 'Спокойный', 'Мягкие карточки'],
+  ['quiet', 'Тихий', 'Минимум линий и цвета'],
+  ['native', 'Системный', 'Как в телефоне'],
+  ['glass', 'Стекло', 'Градиент и размытие'],
+  ['soft', 'Мягкий', 'Объём и тени'],
+  ['terminal', 'Терминал', 'Моноширинный, строгий'],
+];
 const paletteNames = new Set(paletteOptions.map(([name]) => name));
+const styleNames = new Set(styleOptions.map(([name]) => name));
 const themeModes = new Set(['system', 'light', 'dark']);
+const pick = (key, allowed, fallback) => { const value = store.get(key, fallback); return allowed.has(value) ? value : fallback; };
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 function applyTheme() {
-  const savedTheme = store.get('theme', 'light');
-  const theme = themeModes.has(savedTheme) ? savedTheme : 'light';
-  const savedPalette = store.get('palette', 'forest');
-  const palette = paletteNames.has(savedPalette) ? savedPalette : 'forest';
+  const theme = pick('theme', themeModes, 'system');
   const root = document.documentElement;
   root.dataset.theme = theme;
-  root.dataset.palette = palette;
+  root.dataset.palette = pick('palette', paletteNames, 'forest');
+  root.dataset.style = pick('style', styleNames, 'calm');
+  root.dataset.platform = isIOS ? 'ios' : 'android';
   const dark = theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
   root.dataset.appearance = dark ? 'dark' : 'light';
   document.querySelector('meta[name=theme-color]').content = getComputedStyle(root).getPropertyValue('--bg').trim();
@@ -68,15 +81,20 @@ let tick = null;        // функция, вызываемая каждую с�
 let cleanup = null;     // остановка таймеров экрана
 const routes = { '': schedule, schedule, buses, address, settings, grades, account, login, register, 'reset-password': resetPassword, demo };
 let currentSection = 'schedule';
+let lastHash = null;
 let selectedSemester = '2026-1';
 let selectedAttendanceMonth = currentMonth();
 let selectedProgressTab = 'attendance';
 let viewVersion = 0;
 
 function go(path) { location.hash = '#/' + path; }
-window.addEventListener('hashchange', render);
+window.addEventListener('hashchange', () => render());
 
 function render() {
+  // Фоновое обновление той же страницы не должно сбрасывать прокрутку.
+  const samePage = lastHash === location.hash;
+  const scrollY = window.scrollY;
+  lastHash = location.hash;
   viewVersion++;
   if (cleanup) { cleanup(); cleanup = null; }
   tick = null;
@@ -86,15 +104,17 @@ function render() {
   if (!Object.hasOwn(routes, path) && primary !== 'subject' && !demoSubject) currentSection = 'schedule';
   if (['schedule', 'grades', 'buses'].includes(primary)) currentSection = primary;
   if (!path) currentSection = 'schedule';
-  if (['subject', 'account', 'login', 'register', 'reset-password', 'demo'].includes(primary)) currentSection = 'grades';
+  if (['subject', 'demo'].includes(primary)) currentSection = 'grades';
   if (primary === 'address') currentSection = 'buses';
+  // Кабинет и настройки открываются из шапки: ни одна нижняя вкладка к ним не относится.
+  const navSection = ['settings', 'account', 'login', 'register', 'reset-password'].includes(primary) ? null : currentSection;
   $app.dataset.page = Object.hasOwn(routes, path) || primary === 'subject' || demoSubject ? primary || 'schedule' : 'schedule';
   if (staticHosting && authPages.has(primary)) cloudAccount();
   else if (demoSubject) subject(path.slice('demo/subject/'.length));
   else if (primary === 'subject') grades();
   else (Object.hasOwn(routes, path) ? routes[path] : schedule)();
-  document.getElementById('nav').innerHTML = bottomNav(currentSection);
-  window.scrollTo(0, 0);
+  document.getElementById('nav').innerHTML = bottomNav(navSection);
+  window.scrollTo(0, samePage ? scrollY : 0);
 }
 
 setInterval(() => { if (tick && !document.hidden) tick(); }, 1000);
@@ -576,7 +596,7 @@ function renderList(scroll) {
         const t = nowMin < first ? `До начала занятий ${formatLeft(secsTo(first, nowMin))}`
           : nowMin >= last ? 'Занятия на сегодня закончились'
             : `Занятия закончатся через ${formatLeft(secsTo(last, nowMin))} (в ${T.hmMin(last)})`;
-        parts.push(`<div class="summary">${t}</div>`);
+        parts.push(`<div class="summary"><span class="summary-dot" aria-hidden="true"></span>${t}</div>`);
       }
       entries.forEach((e) => parts.push(entryHtml(e, phaseOf(e, sched.selected, today, nowMin), nowMin)));
       html = parts.join('');
@@ -1020,7 +1040,7 @@ function address() {
       gps.innerHTML = `${I.pin} Я сейчас дома — определить по GPS`;
     }, (e) => {
       err.textContent = e.code === 1
-        ? 'Нет доступа к геолокации. Разреши его для Safari в Настройках iPhone или введи адрес вручную.'
+        ? (isIOS ? 'Нет доступа к геолокации. Разреши его для Safari в Настройках iPhone или введи адрес вручную.' : 'Нет доступа к геолокации. Разреши его в настройках телефона для этого приложения или введи адрес вручную.')
         : 'Не удалось определить местоположение. Попробуй на улице или у окна.';
       gps.disabled = false;
       gps.innerHTML = `${I.pin} Я сейчас дома — определить по GPS`;
@@ -1031,46 +1051,50 @@ function address() {
 // ---------------- Настройки ----------------
 
 function settings() {
-  const savedTheme = store.get('theme', 'light');
-  const theme = themeModes.has(savedTheme) ? savedTheme : 'light';
-  const savedPalette = store.get('palette', 'forest');
-  const palette = paletteNames.has(savedPalette) ? savedPalette : 'forest';
+  const theme = pick('theme', themeModes, 'system');
+  const palette = pick('palette', paletteNames, 'forest');
+  const style = pick('style', styleNames, 'calm');
   const home = store.get('home');
-  const opt = (v, l) => `<label class="radio"><input type="radio" name="theme" value="${v}" ${theme === v ? 'checked' : ''}><span>${l}</span></label>`;
-  const color = ([key, label, swatch]) => `<label class="theme-choice"><input type="radio" name="palette" value="${key}" ${palette === key ? 'checked' : ''}><span class="theme-swatch" style="--swatch:${swatch}" aria-hidden="true"></span><span>${label}</span></label>`;
+  const info = currentDiagnostics();
+  const mode = (v, l) => `<label><input type="radio" name="theme" value="${v}" ${theme === v ? 'checked' : ''}><span>${l}</span></label>`;
+  const color = ([key, label, swatch]) => `<label class="swatch-choice" title="${label}"><input type="radio" name="palette" value="${key}" ${palette === key ? 'checked' : ''}><span class="theme-swatch" style="--swatch:${swatch}" aria-hidden="true"></span><span class="swatch-name">${label}</span></label>`;
+  const look = ([key, label, hint]) => `<label class="style-choice"><input type="radio" name="style" value="${key}" ${style === key ? 'checked' : ''}><span class="style-preview" data-preview="${key}" aria-hidden="true"><i></i><i></i><b></b></span><span class="style-name">${label}</span><span class="style-hint">${hint}</span></label>`;
   $app.innerHTML = `
     ${topBar('Настройки', null)}
-    <main class="list form">
-      <h3 class="section">О приложении</h3>
-      <div class="card">
-        <div>Приложение: ${esc(currentDiagnostics().appVersion)} · сборка ${esc(currentDiagnostics().appBuild)}</div>
-        <div class="muted small">Интерфейс: ${esc(currentDiagnostics().webVersion)} · ${esc(currentDiagnostics().commit.slice(0, 8))}</div>
-        <button class="btn outline" data-report>Сообщить об ошибке</button>
-        <div data-report-preview hidden>
-          <p class="field-hint">Добавлены только версии приложения, системы и движка. Проверьте текст перед отправкой.</p>
-          <label class="field"><span class="sr-only">Текст сообщения об ошибке</span><textarea data-report-text rows="12"></textarea></label>
-          <button class="btn" data-report-copy>Скопировать сообщение</button>
-          <button class="btn outline" data-report-share>Поделиться</button>
-          <p role="status" data-report-status></p>
-        </div>
-      </div>
-      <h3 class="section">Цветовая тема</h3>
-      <div class="theme-grid" role="radiogroup" aria-label="Цветовая тема">${paletteOptions.map(color).join('')}</div>
+    <main class="list form settings-main">
+      <h3 class="section">Стиль оформления</h3>
+      <div class="style-grid" role="radiogroup" aria-label="Стиль оформления">${styleOptions.map(look).join('')}</div>
+      <h3 class="section">Цвет</h3>
+      <div class="swatch-row" role="radiogroup" aria-label="Цветовая тема">${paletteOptions.map(color).join('')}</div>
       <h3 class="section">Режим</h3>
-      <div class="card">${opt('system', 'Как в системе')}${opt('light', 'Светлая')}${opt('dark', 'Тёмная')}</div>
+      <div class="mode-seg" role="radiogroup" aria-label="Режим">${mode('system', 'Как в системе')}${mode('light', 'Светлый')}${mode('dark', 'Тёмный')}</div>
       <h3 class="section">Расписание</h3>
-      <div class="card">
-        <div>Группа ИС-25-3С · Луначарского</div>
+      <div class="card setting-card">
+        <div>Группа ИС-25-3С · Луначарского, 19</div>
         <button class="btn outline" data-clear>Очистить сохранённое расписание</button>
       </div>
       <h3 class="section">Автобусы</h3>
-      <div class="card">
+      <div class="card setting-card">
         <div>Домашний адрес: ${esc(home ? home.label : 'не указан')}</div>
         <button class="btn outline" data-addr>${home ? 'Изменить' : 'Указать'} домашний адрес</button>
       </div>
+      <h3 class="section">О приложении</h3>
+      <div class="card setting-card">
+        <div>Приложение: ${esc(info.appVersion)} · сборка ${esc(info.appBuild)}</div>
+        <div class="muted small">Интерфейс: ${esc(info.webVersion)} · ${esc(info.commit.slice(0, 8))}</div>
+        <button class="btn outline" data-report>Сообщить об ошибке</button>
+        <div data-report-preview hidden>
+          <p class="field-hint">Добавлены только версии приложения, системы и движка. Проверьте текст перед отправкой.</p>
+          <label><span class="sr-only">Текст сообщения об ошибке</span><textarea data-report-text rows="12"></textarea></label>
+          <div class="report-actions"><button class="btn" data-report-copy>Скопировать сообщение</button>
+          <button class="btn outline" data-report-share>Поделиться</button></div>
+          <p role="status" data-report-status></p>
+        </div>
+      </div>
     </main>`;
-  $app.querySelectorAll('input[name=theme]').forEach((r) => { r.onchange = () => { store.set('theme', r.value); applyTheme(); }; });
-  $app.querySelectorAll('input[name=palette]').forEach((r) => { r.onchange = () => { store.set('palette', r.value); applyTheme(); }; });
+  for (const name of ['theme', 'palette', 'style']) {
+    $app.querySelectorAll(`input[name=${name}]`).forEach((r) => { r.onchange = () => { store.set(name, r.value); applyTheme(); }; });
+  }
   $app.querySelector('[data-clear]').onclick = (e) => { clearScheduleCache(); e.target.textContent = 'Очищено'; e.target.disabled = true; };
   $app.querySelector('[data-addr]').onclick = () => go('address');
   const report = $app.querySelector('[data-report-preview]');
@@ -1090,7 +1114,6 @@ function settings() {
     try { await navigator.share({ title: 'Ошибка ТКПСТ', text: text.value }); }
     catch (error) { if (error.name !== 'AbortError') status.textContent = 'Не удалось отправить. Скопируйте сообщение.'; }
   };
-
 }
 
 // ---------------- Запуск ----------------

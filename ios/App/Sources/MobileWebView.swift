@@ -13,7 +13,8 @@ struct MobileAppView: View {
     @StateObject private var browser = MobileBrowser()
     @State private var ready = false
     @State private var failed = false
-    @State private var dark = false
+    // До первого сообщения от страницы следуем системной теме, чтобы не мигал светлый фон.
+    @State private var dark = UITraitCollection.current.userInterfaceStyle == .dark
 
     var body: some View {
         ZStack {

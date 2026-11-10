@@ -94,6 +94,14 @@ try {
     await page.getByText('Чёрно-белая').click();
     assert.equal(await page.locator('html').getAttribute('data-palette'), 'mono');
     await page.screenshot({ path: `captures/${width}-mono.png`, fullPage: true });
+    // Каждый стиль оформления применяется сразу и не ломает ширину страницы.
+    for (const [label, style] of [['Тихий', 'quiet'], ['Системный', 'native'], ['Стекло', 'glass'], ['Мягкий', 'soft'], ['Терминал', 'terminal'], ['Спокойный', 'calm']]) {
+      await page.getByText(label, { exact: true }).click();
+      assert.equal(await page.locator('html').getAttribute('data-style'), style);
+      const fit = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1);
+      assert.ok(fit, `${width}px settings in ${style}: horizontal overflow`);
+    }
+    assert.equal(await page.locator('#nav a.active').count(), 0, 'settings must not highlight a bottom tab');
     console.log(`Mobile smoke passed at ${width}px`);
     await context.close();
   }

@@ -58,9 +58,17 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
         )
         if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
+        // До загрузки интерфейса фон совпадает с системной темой, чтобы не было светлой вспышки.
+        val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        val startBackground = if (night) Color.rgb(18, 20, 16) else Color.rgb(246, 248, 241)
+        val startText = if (night) Color.rgb(227, 227, 219) else Color.rgb(26, 28, 23)
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !night
+            isAppearanceLightNavigationBars = !night
+        }
 
         site = WebView(this).apply {
-            setBackgroundColor(Color.rgb(246, 248, 241))
+            setBackgroundColor(startBackground)
             overScrollMode = View.OVER_SCROLL_NEVER
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -122,7 +130,7 @@ class MainActivity : ComponentActivity() {
         message = TextView(this).apply {
             text = "Загружаем ТКПСТ…"
             textSize = 16f
-            setTextColor(Color.rgb(26, 28, 23))
+            setTextColor(startText)
             gravity = Gravity.CENTER
         }
         retry = Button(this).apply {
@@ -139,13 +147,13 @@ class MainActivity : ComponentActivity() {
         overlay = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setBackgroundColor(Color.rgb(246, 248, 241))
+            setBackgroundColor(startBackground)
             addView(progress)
             addView(message)
             addView(retry)
         }
         root = FrameLayout(this).apply {
-            setBackgroundColor(Color.rgb(246, 248, 241))
+            setBackgroundColor(startBackground)
             addView(site, FrameLayout.LayoutParams(-1, -1))
             addView(this@MainActivity.overlay, FrameLayout.LayoutParams(-1, -1))
         }
@@ -179,7 +187,7 @@ class MainActivity : ComponentActivity() {
                 document.documentElement.dataset.appearance || 'light',
                 getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
               );
-              new MutationObserver(report).observe(document.documentElement, { attributes: true, attributeFilter: ['data-appearance', 'data-theme', 'data-palette'] });
+              new MutationObserver(report).observe(document.documentElement, { attributes: true, attributeFilter: ['data-appearance', 'data-theme', 'data-palette', 'data-style'] });
               report();
             })();
         """.trimIndent(), null)

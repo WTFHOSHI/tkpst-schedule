@@ -8,6 +8,48 @@ const ACCOUNT_PATHS = new Set([
   '/api/auth/reset-password', '/api/account', '/api/grades', '/api/attendance',
 ]);
 
+// The admin panel on GitHub Pages reaches its API through this Worker as well:
+// one always-on address instead of a sleeping standalone service. Authorization
+// stays with the upstream (bearer tokens); the Worker only narrows what passes.
+const ADMIN_ORIGIN = PUBLIC_ORIGIN;
+const ADMIN_PATHS = new Set([
+  '/api/admin/login', '/api/admin/users', '/api/admin/link', '/api/admin/logout', '/api/admin/sync',
+  '/api/admin/sync/start', '/api/admin/delete-user', '/api/admin/attendance/login',
+  '/api/admin/attendance/start', '/api/admin/attendance/sync', '/api/admin/attendance/logout',
+]);
+const ADMIN_LARGE = new Set(['/api/admin/sync', '/api/admin/attendance/sync']);
+
+export async function adminApi(request, url) {
+  const cors = { 'Access-Control-Allow-Origin': ADMIN_ORIGIN, Vary: 'Origin', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
+  const fail = (status, message) => Response.json({ error: message }, { status, headers: cors });
+  if (request.headers.get('Origin') !== ADMIN_ORIGIN) return error(403, 'Этот сайт не имеет доступа к админке.');
+  if (!ADMIN_PATHS.has(url.pathname) || url.search) return fail(404, 'Адрес API не найден.');
+  if (request.method === 'OPTIONS') {
+    if (request.headers.get('Access-Control-Request-Method') !== 'POST') return fail(405, 'Нужен POST-запрос.');
+    const asked = (request.headers.get('Access-Control-Request-Headers') || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean);
+    if (asked.some(x => !['authorization', 'content-type'].includes(x))) return fail(403, 'Заголовок запрещён.');
+    return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Authorization, Content-Type', 'Access-Control-Max-Age': '600' } });
+  }
+  if (request.method !== 'POST') return fail(405, 'Нужен POST-запрос.');
+  if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type') || '')) return fail(415, 'Нужен запрос в формате JSON.');
+  const body = await request.arrayBuffer();
+  if (body.byteLength > (ADMIN_LARGE.has(url.pathname) ? 512 : 16) * 1024) return fail(413, 'Запрос слишком большой.');
+  const headers = new Headers({ 'Content-Type': 'application/json', Origin: ADMIN_ORIGIN, Accept: 'application/json' });
+  const authorization = request.headers.get('Authorization');
+  if (authorization) {
+    if (!/^Bearer [A-Za-z0-9_-]{43}$/.test(authorization)) return fail(401, 'Нужен вход в админ-панель.');
+    headers.set('Authorization', authorization);
+  }
+  try {
+    // Cookies are never forwarded: student sessions cannot authorize admin calls.
+    const upstream = await fetch(API_ORIGIN + url.pathname, { method: 'POST', headers, body, redirect: 'manual', cache: 'no-store', signal: AbortSignal.timeout(25_000) });
+    if (upstream.status >= 300 && upstream.status < 400) return fail(502, 'Сервис пользователей временно недоступен.');
+    const out = new Headers(cors);
+    for (const name of ['Content-Type', 'Retry-After']) { const value = upstream.headers.get(name); if (value) out.set(name, value); }
+    return new Response(upstream.status === 204 ? null : upstream.body, { status: upstream.status, headers: out });
+  } catch { return fail(503, 'Сервис пользователей временно недоступен.'); }
+}
+
 const error = (status, message) => Response.json({ error: message }, {
   status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
 });
@@ -50,6 +92,7 @@ export default {
     }
     if (url.pathname.startsWith('/schedule_api/')) return publicSchedule(request, url);
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
+    if (url.pathname.startsWith('/api/admin/')) return adminApi(request, url);
     if (!ACCOUNT_PATHS.has(url.pathname)) return error(404, 'Адрес API не найден.');
     if (request.method !== 'POST') return error(405, 'Для API нужен POST-запрос.');
     if (request.headers.get('Origin') !== url.origin || request.headers.get('Sec-Fetch-Site') === 'cross-site') {

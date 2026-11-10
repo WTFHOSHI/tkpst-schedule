@@ -19,7 +19,7 @@ export function authFormMarkup(mode) {
       </fieldset>
     </form>
     <p class="auth-switch">${resetting ? '<a href="#/login">Вернуться ко входу</a>' : registering ? 'Уже есть аккаунт? <a href="#/login">Войти</a>' : 'Нет аккаунта? <a href="#/register">Зарегистрироваться</a>'}</p>
-    ${!registering && !resetting ? '<p class="auth-recovery"><a href="#/reset-password">Восстановить пароль</a></p>' : ''}
+    ${!registering && !resetting ? '<p class="auth-switch auth-recovery">Забыли пароль? <a href="#/reset-password">Восстановить пароль</a></p>' : ''}
     <a class="auth-public-link" href="#/schedule">Вернуться к расписанию</a>
   </main>`;
 }
