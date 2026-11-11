@@ -39,6 +39,9 @@ struct TkpstApp: App {
         }
         .onChange(of: phase) { p in
             if p == .background { BackgroundSync.schedule() }
+            // Интерфейс работает в веб-странице, поэтому расписание для напоминаний и виджета
+            // подтягиваем сами при каждом открытии приложения.
+            if p == .active { Task { await PairReminder.refreshEverything() } }
         }
     }
 }

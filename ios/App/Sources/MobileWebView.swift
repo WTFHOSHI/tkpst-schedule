@@ -67,7 +67,9 @@ struct MobileWebView: UIViewRepresentable {
         scripts.addUserScript(WKUserScript(source: diagnosticScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
         scripts.addUserScript(WKUserScript(source: migrationScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
         scripts.addUserScript(WKUserScript(source: appearanceScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        scripts.addUserScript(WKUserScript(source: reminderScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         scripts.add(context.coordinator, name: "tkpstAppearance")
+        scripts.add(context.coordinator, name: "tkpstReminder")
 
         let view = WKWebView(frame: .zero, configuration: config)
         view.navigationDelegate = context.coordinator
@@ -118,6 +120,18 @@ struct MobileWebView: UIViewRepresentable {
           if (old.home && localStorage.getItem('home') === null) localStorage.setItem('home', JSON.stringify(old.home));
           localStorage.setItem('tkpst_mobile_migrated_v1', '1');
         } catch (_) {} })();
+        """
+    }
+
+    /// Тот же интерфейс, что у Android: переключатель напоминания в настройках страницы.
+    private var reminderScript: String {
+        """
+        (() => {
+          let on = \(PairReminder.enabled ? "true" : "false");
+          const bridge = globalThis.TkpstTheme || (globalThis.TkpstTheme = {});
+          bridge.getReminder = () => on;
+          bridge.setReminder = value => { on = value === true; window.webkit.messageHandlers.tkpstReminder.postMessage(on); };
+        })();
         """
     }
 
@@ -184,6 +198,11 @@ struct MobileWebView: UIViewRepresentable {
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard message.frameInfo.isMainFrame, message.frameInfo.securityOrigin.host == MobileWebView.host else { return }
+            if message.name == "tkpstReminder" {
+                PairReminder.enabled = (message.body as? Bool) == true
+                Task { @MainActor in PairReminder.reschedule() }
+                return
+            }
             dark.wrappedValue = (message.body as? String) == "dark"
         }
     }

@@ -10,6 +10,7 @@ ios/build/
 ios/Payload/
 ios/Tkpst.xcodeproj/
 ios/App/Info.plist
+ios/Widget/Info.plist
 ios/Core/.build/
 server/.data/
 .env

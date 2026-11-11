@@ -25,6 +25,7 @@ targets:
       - App/Resources
     dependencies:
       - package: TkpstCore
+      - target: TkpstWidget
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ru.yami.tkpst
@@ -49,3 +50,36 @@ targets:
         UIBackgroundModes: [fetch]
         BGTaskSchedulerPermittedIdentifiers: [ru.yami.tkpst.sync]
         ITSAppUsesNonExemptEncryption: false
+
+  # Виджет «Текущая и следующая пара». Расписание скачивает сам: общая с приложением
+  # память (App Group) недоступна при установке через AltStore с бесплатным Apple ID.
+  TkpstWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Widget
+      - path: App/Sources/ScheduleRepository.swift
+      - path: App/Sources/OverridesStore.swift
+      - path: App/Sources/Http.swift
+    dependencies:
+      - package: TkpstCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ru.yami.tkpst.widget
+        PRODUCT_NAME: TkpstWidget
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Widget/Info.plist
+        CODE_SIGN_STYLE: Manual
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: ТКПСТ
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
