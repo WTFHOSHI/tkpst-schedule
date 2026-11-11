@@ -1,3 +1,4 @@
+import WidgetKit
 import SwiftUI
 import UIKit
 import WebKit
@@ -70,6 +71,7 @@ struct MobileWebView: UIViewRepresentable {
         scripts.addUserScript(WKUserScript(source: reminderScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         scripts.add(context.coordinator, name: "tkpstAppearance")
         scripts.add(context.coordinator, name: "tkpstReminder")
+        scripts.add(context.coordinator, name: "tkpstWidgetColors")
 
         let view = WKWebView(frame: .zero, configuration: config)
         view.navigationDelegate = context.coordinator
@@ -138,8 +140,14 @@ struct MobileWebView: UIViewRepresentable {
     private var appearanceScript: String {
         """
         (() => {
-          const report = () => window.webkit.messageHandlers.tkpstAppearance.postMessage(document.documentElement.dataset.appearance || 'light');
-          new MutationObserver(report).observe(document.documentElement, { attributes: true, attributeFilter: ['data-appearance'] });
+          // #abc -> #aabbcc, чтобы приложение получало полную запись цвета.
+          const hex = name => { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return /^#[0-9a-f]{3}$/i.test(v) ? '#' + [...v.slice(1)].map(c => c + c).join('') : v; };
+          const report = () => {
+            window.webkit.messageHandlers.tkpstAppearance.postMessage(document.documentElement.dataset.appearance || 'light');
+            // Виджет на экране «Домой» повторяет цвета выбранной темы.
+            window.webkit.messageHandlers.tkpstWidgetColors.postMessage([hex('--card'), hex('--text'), hex('--muted'), hex('--primary')]);
+          };
+          new MutationObserver(report).observe(document.documentElement, { attributes: true, attributeFilter: ['data-appearance', 'data-theme', 'data-palette', 'data-style'] });
           report();
         })();
         """
@@ -198,6 +206,10 @@ struct MobileWebView: UIViewRepresentable {
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard message.frameInfo.isMainFrame, message.frameInfo.securityOrigin.host == MobileWebView.host else { return }
+            if message.name == "tkpstWidgetColors" {
+                if let colors = message.body as? [String], SharedTheme.save(colors) { WidgetCenter.shared.reloadAllTimelines() }
+                return
+            }
             if message.name == "tkpstReminder" {
                 PairReminder.enabled = (message.body as? Bool) == true
                 Task { @MainActor in PairReminder.reschedule() }

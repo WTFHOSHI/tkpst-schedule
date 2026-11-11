@@ -113,23 +113,29 @@ struct PairWidgetView: View {
 
     var body: some View {
         let c = content
+        // Цвета темы, выбранной в приложении; без них — системные светлые или тёмные.
+        let theme = SharedTheme.load()
+        let surface = theme.map { Color($0[0]) } ?? Self.surface
+        let text = theme.map { Color($0[1]) } ?? Color.primary
+        let muted = theme.map { Color($0[2]) } ?? Color.secondary
+        let accent = theme.map { Color($0[3]) } ?? Self.accent
         VStack(alignment: .leading, spacing: 3) {
-            Text(c.label).font(.caption.weight(.semibold)).foregroundColor(Self.accent).lineLimit(1)
-            Text(c.title).font(.headline).lineLimit(family == .systemSmall ? 3 : 2).minimumScaleFactor(0.8)
-            if !c.span.isEmpty { Text(c.span).font(.caption).lineLimit(2) }
+            Text(c.label).font(.caption.weight(.semibold)).foregroundColor(accent).lineLimit(1)
+            Text(c.title).font(.headline).foregroundColor(text).lineLimit(family == .systemSmall ? 3 : 2).minimumScaleFactor(0.8)
+            if !c.span.isEmpty { Text(c.span).font(.caption).foregroundColor(text).lineLimit(2) }
             if let until = c.until {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(until, style: .timer).font(.title3.weight(.bold)).monospacedDigit()
-                        .foregroundColor(Self.accent).multilineTextAlignment(.leading).fixedSize()
-                    Text(c.timerLabel).font(.caption2).foregroundColor(.secondary)
+                        .foregroundColor(accent).multilineTextAlignment(.leading).fixedSize()
+                    Text(c.timerLabel).font(.caption2).foregroundColor(muted)
                 }
             }
             if !c.next.isEmpty, family != .systemSmall {
-                Text(c.next).font(.caption2).foregroundColor(.secondary).lineLimit(1)
+                Text(c.next).font(.caption2).foregroundColor(muted).lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .widgetSurface(Self.surface)
+        .widgetSurface(surface)
     }
 }
 

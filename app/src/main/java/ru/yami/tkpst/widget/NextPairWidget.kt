@@ -5,9 +5,11 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.os.SystemClock
 import android.view.View
 import android.widget.RemoteViews
+import ru.yami.tkpst.App
 import ru.yami.tkpst.MainActivity
 import ru.yami.tkpst.R
 import ru.yami.tkpst.data.BreakKind
@@ -88,6 +90,17 @@ class NextPairWidget : AppWidgetProvider() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             views.setOnClickPendingIntent(R.id.widget_root, open)
+
+            // Цвета выбранной в приложении темы; без них остаются цвета по умолчанию из ресурсов.
+            val theme = (context.applicationContext as App).settings.widgetColors.split(',')
+                .mapNotNull { runCatching { Color.parseColor(it) }.getOrNull() }
+            if (theme.size == 4) {
+                val (background, text, muted, accent) = theme
+                views.setInt(R.id.widget_bg, "setColorFilter", background)
+                for (id in intArrayOf(R.id.widget_title, R.id.widget_time)) views.setTextColor(id, text)
+                for (id in intArrayOf(R.id.widget_timer_label, R.id.widget_next)) views.setTextColor(id, muted)
+                for (id in intArrayOf(R.id.widget_label, R.id.widget_timer)) views.setTextColor(id, accent)
+            }
 
             fun timer(label: String, until: LocalDateTime?) {
                 if (until == null) {
