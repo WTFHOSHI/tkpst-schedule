@@ -923,7 +923,7 @@ button, input, select, textarea { font-family: inherit; }
 :root[data-appearance="dark"][data-style="band"] .page-header { background: var(--primary-c); color: var(--on-primary-c); }
 :root[data-appearance="dark"][data-style="band"] .page-header .icon:hover { background: color-mix(in srgb, var(--on-primary-c) 14%, transparent); }
 
-/* Чёрная тема: чисто чёрный фон (на OLED-экранах пиксели выключены). Всегда тёмная. */
+/* «Бело-чёрная» тема: чисто чёрный фон и белые акценты — обратная «Чёрно-белой». Всегда тёмная. */
 :root[data-palette="black"], :root[data-palette="black"][data-appearance="dark"] {
   --primary: #F2F2F2; --on-primary: #000000;
   --primary-c: #262626; --on-primary-c: #F5F5F5;

@@ -123,6 +123,11 @@ jobs:
         run: |
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/Tkpst.app Payload/
+          # Подпись «для себя» только вкладывает права на общую память приложения и виджета
+          # (App Group): AltStore и SideStore читают их и заново подписывают приложение при установке.
+          codesign --force --sign - --entitlements Entitlements/TkpstWidget.entitlements Payload/Tkpst.app/PlugIns/TkpstWidget.appex
+          codesign --force --sign - --entitlements Entitlements/Tkpst.entitlements Payload/Tkpst.app
+          codesign -d --entitlements - Payload/Tkpst.app 2>&1 | grep -q 'group.ru.yami.tkpst'
           zip -qry ../tkpst-schedule-${{ github.run_number }}.ipa Payload
 
       - uses: actions/upload-artifact@v4

@@ -23,6 +23,7 @@ targets:
     sources:
       - App/Sources
       - App/Resources
+      - Shared
     dependencies:
       - package: TkpstCore
       - target: TkpstWidget
@@ -58,6 +59,7 @@ targets:
     platform: iOS
     sources:
       - Widget
+      - Shared
       - path: App/Sources/ScheduleRepository.swift
       - path: App/Sources/OverridesStore.swift
       - path: App/Sources/Http.swift
