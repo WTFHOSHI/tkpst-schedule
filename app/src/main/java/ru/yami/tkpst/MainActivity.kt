@@ -183,10 +183,14 @@ class MainActivity : ComponentActivity() {
             (() => {
               if (window.__tkpstNativeAppearance) return;
               window.__tkpstNativeAppearance = true;
-              const report = () => window.TkpstTheme.appearanceChanged(
-                document.documentElement.dataset.appearance || 'light',
-                getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
-              );
+              const style = () => getComputedStyle(document.documentElement);
+              // #abc -> #aabbcc: Android понимает только полную запись цвета.
+              const hex = name => { const v = style().getPropertyValue(name).trim(); return /^#[0-9a-f]{3}$/i.test(v) ? '#' + [...v.slice(1)].map(c => c + c).join('') : v; };
+              const report = () => {
+                window.TkpstTheme.appearanceChanged(document.documentElement.dataset.appearance || 'light', hex('--bg'));
+                // Виджет на главном экране повторяет цвета выбранной темы.
+                if (window.TkpstTheme.widgetColors) window.TkpstTheme.widgetColors(hex('--card'), hex('--text'), hex('--muted'), hex('--primary'));
+              };
               new MutationObserver(report).observe(document.documentElement, { attributes: true, attributeFilter: ['data-appearance', 'data-theme', 'data-palette', 'data-style'] });
               report();
             })();
@@ -207,6 +211,17 @@ class MainActivity : ComponentActivity() {
 
         @JavascriptInterface fun setReminder(enabled: Boolean) {
             (application as App).settings.reminder = enabled
+            runOnUiThread { runCatching { ru.yami.tkpst.widget.ScheduleTicker.refresh(applicationContext) } }
+        }
+
+        /** Цвета выбранной темы для виджета: фон, текст, приглушённый текст, акцент. */
+        @JavascriptInterface fun widgetColors(background: String, text: String, muted: String, accent: String) {
+            val colors = listOf(background, text, muted, accent)
+            if (colors.any { runCatching { Color.parseColor(it) }.isFailure }) return
+            val value = colors.joinToString(",")
+            val settings = (application as App).settings
+            if (settings.widgetColors == value) return
+            settings.widgetColors = value
             runOnUiThread { runCatching { ru.yami.tkpst.widget.ScheduleTicker.refresh(applicationContext) } }
         }
 

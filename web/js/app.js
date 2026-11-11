@@ -51,6 +51,7 @@ const paletteOptions = [
   ['amber', 'Янтарная', '#725200'],
   ['graphite', 'Графит', '#4F5964'],
   ['mono', 'Чёрно-белая', 'linear-gradient(90deg, #161616 50%, #fff 50%)'],
+  ['black', 'Чёрная', '#000000'],
 ];
 // Стиль оформления меняет форму, шрифт и поверхности; цвет и режим выбираются отдельно.
 const styleOptions = [
@@ -77,7 +78,8 @@ function applyTheme() {
   root.dataset.palette = pick('palette', paletteNames, 'forest');
   root.dataset.style = pick('style', styleNames, 'calm');
   root.dataset.platform = isIOS ? 'ios' : 'android';
-  const dark = theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  // Чёрная тема тёмная всегда: фон у неё чисто чёрный в любом режиме.
+  const dark = root.dataset.palette === 'black' || theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
   root.dataset.appearance = dark ? 'dark' : 'light';
   document.querySelector('meta[name=theme-color]').content = getComputedStyle(root).getPropertyValue('--bg').trim();
 }

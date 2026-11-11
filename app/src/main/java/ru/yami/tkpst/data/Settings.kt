@@ -54,6 +54,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("reminder_first_pair", true)
         set(v) = prefs.edit().putBoolean("reminder_first_pair", v).apply()
 
+    /** Цвета темы для виджета: «фон,текст,приглушённый,акцент» в виде #RRGGBB. Пусто — цвета по умолчанию. */
+    var widgetColors: String
+        get() = prefs.getString("widget_colors", "").orEmpty()
+        set(v) = prefs.edit().putString("widget_colors", v).apply()
+
     /** Разрешение на уведомления спрашиваем один раз. */
     var askedNotifications: Boolean
         get() = prefs.getBoolean("asked_notifications", false)
