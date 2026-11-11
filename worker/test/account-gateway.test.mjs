@@ -31,7 +31,9 @@ test('one-origin account proxy forwards host-only cookies and a fixed upstream o
 
 test('foreign origins and admin paths cannot use the account proxy', async () => {
   assert.equal((await gateway.fetch(request(api, { headers: { Origin: 'https://evil.example' } }), { ASSETS: assets })).status, 403);
-  assert.equal((await gateway.fetch(request(origin + '/api/admin/users'), { ASSETS: assets })).status, 404);
+  // Admin paths are closed to the account UI origin and to any other site.
+  assert.equal((await gateway.fetch(request(origin + '/api/admin/users'), { ASSETS: assets })).status, 403);
+  assert.equal((await gateway.fetch(request(origin + '/api/admin/users', { headers: { Origin: 'https://evil.example' } }), { ASSETS: assets })).status, 403);
 });
 
 test('static pages stay on the Worker and health is independent of the upstream', async () => {
@@ -66,4 +68,48 @@ test('schedule proxy rejects unknown paths and methods', async () => {
   assert.equal(unknown.status, 404);
   const post = await gateway.fetch(new Request(origin + '/schedule_api/tyumen/groups/196/schedules?date=2026-10-15', { method: 'POST' }), { ASSETS: assets });
   assert.equal(post.status, 405);
+});
+
+const adminOrigin = 'https://wtfhoshi.github.io';
+const adminRequest = (path, init = {}) => {
+  const { headers = {}, ...options } = init;
+  return new Request(origin + path, { method: 'POST', headers: { Origin: adminOrigin, 'Content-Type': 'application/json', ...headers }, body: '{}', ...options });
+};
+
+test('admin panel calls pass through with the bearer token and without cookies', async t => {
+  const original = globalThis.fetch;
+  t.after(() => { globalThis.fetch = original; });
+  const token = 'a'.repeat(43);
+  globalThis.fetch = async (url, init) => {
+    assert.equal(url, 'https://tkpst-schedule.vercel.app/api/admin/users');
+    assert.equal(init.headers.get('Origin'), adminOrigin);
+    assert.equal(init.headers.get('Authorization'), 'Bearer ' + token);
+    assert.equal(init.headers.get('Cookie'), null);
+    return Response.json({ users: [] }, { headers: { 'Set-Cookie': 'x=1' } });
+  };
+  const response = await gateway.fetch(adminRequest('/api/admin/users', { headers: { Authorization: 'Bearer ' + token, Cookie: '__Host-tkpst_session=student' } }), { ASSETS: assets });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Access-Control-Allow-Origin'), adminOrigin);
+  assert.equal(response.headers.get('Set-Cookie'), null);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  assert.deepEqual(await response.json(), { users: [] });
+});
+
+test('admin preflight is limited to POST with authorization and content type', async () => {
+  const preflight = headers => gateway.fetch(new Request(origin + '/api/admin/attendance/sync', { method: 'OPTIONS', headers: { Origin: adminOrigin, ...headers } }), { ASSETS: assets });
+  const ok = await preflight({ 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'authorization, content-type' });
+  assert.equal(ok.status, 204);
+  assert.equal(ok.headers.get('Access-Control-Allow-Origin'), adminOrigin);
+  assert.equal((await preflight({ 'Access-Control-Request-Method': 'DELETE' })).status, 405);
+  assert.equal((await preflight({ 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'x-secret' })).status, 403);
+});
+
+test('admin proxy rejects unknown paths, malformed tokens and oversized bodies before the upstream', async t => {
+  const original = globalThis.fetch;
+  t.after(() => { globalThis.fetch = original; });
+  globalThis.fetch = async () => { throw new Error('upstream must not be called'); };
+  assert.equal((await gateway.fetch(adminRequest('/api/admin/unknown'), { ASSETS: assets })).status, 404);
+  assert.equal((await gateway.fetch(adminRequest('/api/admin/users', { headers: { Authorization: 'Bearer short' } }), { ASSETS: assets })).status, 401);
+  assert.equal((await gateway.fetch(adminRequest('/api/admin/users', { body: JSON.stringify({ x: 'y'.repeat(17 * 1024) }) }), { ASSETS: assets })).status, 413);
+  assert.equal((await gateway.fetch(adminRequest('/api/admin/users'), { ASSETS: assets })).status, 503);
 });

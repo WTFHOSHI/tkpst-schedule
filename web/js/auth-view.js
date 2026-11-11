@@ -19,7 +19,7 @@ export function authFormMarkup(mode) {
       </fieldset>
     </form>
     <p class="auth-switch">${resetting ? '<a href="#/login">Вернуться ко входу</a>' : registering ? 'Уже есть аккаунт? <a href="#/login">Войти</a>' : 'Нет аккаунта? <a href="#/register">Зарегистрироваться</a>'}</p>
-    ${!registering && !resetting ? '<p class="auth-recovery"><a href="#/reset-password">Восстановить пароль</a></p>' : ''}
+    ${!registering && !resetting ? '<p class="auth-switch auth-recovery">Забыли пароль? <a href="#/reset-password">Восстановить пароль</a></p>' : ''}
     <a class="auth-public-link" href="#/schedule">Вернуться к расписанию</a>
   </main>`;
 }
@@ -27,16 +27,15 @@ export function authFormMarkup(mode) {
 export function signedOutMarkup(unavailable = false) {
   return `<main class="grades-main access-main">${icon('user-round')}<h2>Личный кабинет</h2>
     ${unavailable ? '<p class="auth-error" role="status">Сервис входа временно недоступен.</p><button class="btn outline" data-auth-retry>Проверить соединение</button>' : ''}
-    <a class="btn auth-submit" href="#/login">Войти в личный кабинет</a><a class="btn outline" href="#/register">Создать аккаунт</a>
-    <a class="auth-public-link" href="#/demo">Посмотреть пример журнала</a></main>`;
+    <a class="btn auth-submit" href="#/login">Войти в личный кабинет</a><a class="btn outline" href="#/register">Создать аккаунт</a></main>`;
 }
 
 export function profileMarkup(user) {
   const student = user.verifiedStudent && user.student;
   return `<main class="grades-main account-main"><div class="profile-preview">${icon('user-round')}<div><h2>${esc(student ? student.displayName : user.displayName)}</h2><p>@${esc(user.username)}</p></div></div>
-    <dl class="profile-facts"><div><dt>Студент</dt><dd>${student ? 'Подтверждён администратором' : 'Ожидает подтверждения'}</dd></div>${student ? `<div><dt>Группа</dt><dd>${esc(student.groupName || 'Не указана')} · ${esc(student.course)} курс</dd></div>` : ''}<div><dt>Оценки</dt><dd>Журнал не подключён</dd></div></dl>
+    <dl class="profile-facts"><div><dt>Студент</dt><dd>${student ? 'Подтверждён администратором' : 'Ожидает подтверждения'}</dd></div>${student ? `<div><dt>Группа</dt><dd>${esc(student.groupName || 'Не указана')} · ${esc(student.course)} курс</dd></div>` : ''}</dl>
     ${student ? '' : '<p class="field-hint">Сообщите администратору свой логин, чтобы он связал аккаунт с вами в списке группы.</p>'}
-    <a class="btn account-cta" href="#/grades">${icon('chart-no-axes-column')} Моя успеваемость</a>
+    <a class="btn account-cta" href="#/grades">${icon('chart-no-axes-column')} Моя посещаемость</a>
     <a class="account-settings" href="#/settings">${icon('settings')}<span>Настройки приложения</span>${icon('chevron-right')}</a>
     <p class="auth-error" data-logout-error role="alert" hidden></p>
     <button class="logout-button" data-logout>${icon('log-out')} Выйти из аккаунта</button></main>`;

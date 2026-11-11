@@ -54,7 +54,7 @@ test('attendance view distinguishes unsynced, unmarked, unlinked, loading and er
   assert.doesNotMatch(error, /<img/);
 });
 
-test('journal lists only absences and separates grades into another tab', async () => {
+test('journal lists only absences with a monthly attendance rate and no grades tab', async () => {
   const { attendanceMarkup } = await import('../js/attendance-view.js');
   const html = attendanceMarkup({ month: '2026-10', kind: 'ready', data: {
     linked: true, syncedAt: '2026-10-27T10:00:00Z',
@@ -70,12 +70,12 @@ test('journal lists only absences and separates grades into another tab', async 
   assert.match(html, /Следующий месяц/);
   assert.doesNotMatch(html, /Последняя передача|Обновляется автоматически|Пустые ячейки/);
   assert.doesNotMatch(html, /data-attendance-retry/);
-  assert.match(html, /data-progress-tab="grades"/);
-  assert.doesNotMatch(html, /Оценки не подключены/);
-  const grades = attendanceMarkup({ month: '2026-10', tab: 'grades', kind: 'ready', data: null });
-  assert.match(grades, /Оценки не подключены/);
-  assert.doesNotMatch(grades, /data-attendance-month|Журнал пропусков/);
-  assert.doesNotMatch(html, /%|NaN|Invalid Date/);
+  // Вкладка оценок скрыта, пока журнал колледжа не подключён.
+  assert.doesNotMatch(html, /data-progress-tab|Оценки не подключены|role="tablist"/);
+  // 1 посещение из 6 отмеченных пар.
+  assert.match(html, />17%</);
+  assert.match(html, /1 из 6 отмеченных пар · прогулов: 1/);
+  assert.doesNotMatch(html, /NaN|Invalid Date/);
   assert.match(attendanceMarkup({ month: '2026-10', kind: 'ready', refreshError: true, data: {
     linked: true, syncedAt: '2026-10-27T10:00:00Z', records: [{ date: '2026-10-26', pair: 1, status: 'N' }],
   } }), /Данные обновятся автоматически/);

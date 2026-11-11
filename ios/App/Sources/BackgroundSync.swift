@@ -15,6 +15,7 @@ enum BackgroundSync {
                 let admin = await OverridesStore.shared.refresh() ?? []
                 let changes = await ScheduleRepository.shared.prefetch(ScheduleRepository.weeksToSync(today), today: today)
                 ScheduleNotifier.notify(admin + (changes ?? []))
+                await PairReminder.reschedule()
                 task.setTaskCompleted(success: changes != nil)
             }
             task.expirationHandler = { work.cancel() }

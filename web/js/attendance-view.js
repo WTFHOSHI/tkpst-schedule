@@ -2,7 +2,6 @@ import { escapeHtml as esc, icon } from './ui.js';
 import { ATTENDANCE_STATUSES, MIN_MONTH, MAX_MONTH, attendanceModel } from './attendance.js';
 
 const dayFormat = new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Yekaterinburg' });
-const gradeNotice = '<section class="attendance-grade-note" role="tabpanel" id="progress-grades" aria-labelledby="progress-grades-tab"><h2>Оценки не подключены</h2><a class="auth-public-link" href="#/demo">Посмотреть пример</a></section>';
 const retry = '<button class="btn outline" data-attendance-retry>Повторить сейчас</button>';
 
 function missedLabel(count) {
@@ -11,11 +10,7 @@ function missedLabel(count) {
   return `${count} ${lastTwo >= 11 && lastTwo <= 14 ? 'пропусков' : last === 1 ? 'пропуск' : last >= 2 && last <= 4 ? 'пропуска' : 'пропусков'}`;
 }
 
-export function attendanceMarkup({ month, tab = 'attendance', kind = 'loading', data, error, refreshError = false, subjects = {}, subjectsPending = false }) {
-  const activeTab = tab === 'grades' ? 'grades' : 'attendance';
-  const tabs = `<div class="progress-tabs" role="tablist" aria-label="Разделы успеваемости"><button type="button" role="tab" id="progress-attendance-tab" aria-controls="progress-attendance" aria-selected="${activeTab === 'attendance'}" data-progress-tab="attendance">Посещаемость</button><button type="button" role="tab" id="progress-grades-tab" aria-controls="progress-grades" aria-selected="${activeTab === 'grades'}" data-progress-tab="grades">Оценки</button></div>`;
-  if (activeTab === 'grades') return `<main class="grades-main attendance-main">${tabs}${gradeNotice}</main>`;
-
+export function attendanceMarkup({ month, kind = 'loading', data, error, refreshError = false, subjects = {}, subjectsPending = false }) {
   const model = attendanceModel(data, month);
   const controls = `<div class="attendance-month"><button class="icon" data-attendance-prev aria-label="Предыдущий месяц" ${month === MIN_MONTH ? 'disabled' : ''}>${icon('arrow-left')}</button><label><span class="sr-only">Месяц посещаемости</span><input type="month" data-attendance-month value="${esc(month)}" min="${MIN_MONTH}" max="${MAX_MONTH}" required></label><button class="icon" data-attendance-next aria-label="Следующий месяц" ${month === MAX_MONTH ? 'disabled' : ''}>${icon('chevron-right')}</button></div>`;
   let content;
@@ -30,7 +25,9 @@ export function attendanceMarkup({ month, tab = 'attendance', kind = 'loading', 
   } else {
     const c = model.counts;
     const missedDays = model.days.map(day => ({ date: day.date, records: day.records.filter(record => record.status !== 'P') })).filter(day => day.records.length);
-    const summary = c.marked ? `<p class="attendance-overview"><strong>${missedLabel(c.missed)}</strong></p>` : '';
+    // Процент считается только по поставленным отметкам: пустая ячейка не пропуск и не посещение.
+    const percent = c.marked ? Math.round(c.attended / c.marked * 100) : 0;
+    const summary = c.marked ? `<section class="attendance-overview" aria-label="Итог за месяц"><div class="attendance-rate"><strong>${percent}%</strong><span>посещаемость</span></div><div class="attendance-rate-side"><b>${missedLabel(c.missed)}</b><span>${c.attended} из ${c.marked} отмеченных пар${c.unexcused ? ` · прогулов: ${c.unexcused}` : ''}</span></div><div class="attendance-meter" role="img" aria-label="Посещено ${percent}%"><i style="width:${percent}%"></i></div></section>` : '';
     const journal = !c.marked
       ? '<div class="attendance-state"><h3>Пока нет отметок</h3></div>'
       : !missedDays.length
@@ -42,5 +39,5 @@ export function attendanceMarkup({ month, tab = 'attendance', kind = 'loading', 
         }).join('')}</ul></li>`).join('')}</ul></section>`;
     content = `${summary}${journal}${refreshError ? '<p class="attendance-refresh-error" role="status">Нет связи. Данные обновятся автоматически.</p>' : ''}`;
   }
-  return `<main class="grades-main attendance-main">${tabs}<section role="tabpanel" id="progress-attendance" aria-labelledby="progress-attendance-tab"><h2 class="sr-only">Посещаемость</h2>${controls}<div data-attendance-content aria-live="polite" aria-busy="${kind === 'loading'}">${content}</div></section></main>`;
+  return `<main class="grades-main attendance-main"><section><h2 class="sr-only">Посещаемость за месяц</h2>${controls}<div data-attendance-content aria-live="polite" aria-busy="${kind === 'loading'}">${content}</div></section></main>`;
 }
