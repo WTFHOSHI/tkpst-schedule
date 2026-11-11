@@ -93,7 +93,7 @@ try {
     assert.equal(await page.locator('html').getAttribute('data-palette'), 'mono');
     await page.screenshot({ path: `captures/${width}-mono.png`, fullPage: true });
     // Каждый стиль оформления применяется сразу и не ломает ширину страницы.
-    for (const [label, style] of [['Тихий', 'quiet'], ['Системный', 'native'], ['Стекло', 'glass'], ['Мягкий', 'soft'], ['Терминал', 'terminal'], ['Бумага', 'paper'], ['Неон', 'neon'], ['Контур', 'outline'], ['Спокойный', 'calm']]) {
+    for (const [label, style] of [['Тихий', 'quiet'], ['Системный', 'native'], ['Стекло', 'glass'], ['Мягкий', 'soft'], ['Терминал', 'terminal'], ['Бумага', 'paper'], ['Цветной', 'band'], ['Контур', 'outline'], ['Спокойный', 'calm']]) {
       await page.getByText(label, { exact: true }).click();
       assert.equal(await page.locator('html').getAttribute('data-style'), style);
       const fit = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1);

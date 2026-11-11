@@ -819,25 +819,6 @@ button, input, select, textarea { font-family: inherit; }
 :root[data-style="paper"] .chip.sel { box-shadow: none; }
 :root[data-style="paper"] .section { font-style: italic; text-transform: none; letter-spacing: 0; font-size: 15px; }
 
-/* ---------- Стиль «Неон»: свечение акцента (лучше всего в тёмном режиме) ---------- */
-:root[data-style="neon"] {
-  --r-card: 18px; --r-ctl: 12px; --card-line: color-mix(in srgb, var(--primary) 34%, transparent);
-  --glow: 0 0 0 1px color-mix(in srgb, var(--primary) 55%, transparent), 0 0 18px color-mix(in srgb, var(--primary) 45%, transparent);
-  --page: radial-gradient(90% 50% at 50% 0%, color-mix(in srgb, var(--primary) 16%, var(--bg)) 0%, transparent 70%), var(--bg);
-  --nav-surface: color-mix(in srgb, var(--bg) 80%, transparent);
-}
-:root[data-style="neon"] .card, :root[data-style="neon"] .chip:not(.sel), :root[data-style="neon"] .style-choice:not(:has(input:checked)) { background: color-mix(in srgb, var(--card) 70%, transparent); }
-:root[data-style="neon"] .bottom-nav { box-shadow: var(--glow); border-color: transparent; }
-:root[data-style="neon"] .nav-item.active { background: transparent; color: var(--primary); text-shadow: 0 0 12px color-mix(in srgb, var(--primary) 70%, transparent); box-shadow: inset 0 0 0 1px var(--primary); }
-:root[data-style="neon"] .phase-now.pair { background: color-mix(in srgb, var(--primary) 12%, var(--card)); color: var(--text); border-color: var(--primary); box-shadow: var(--glow); }
-:root[data-style="neon"] .phase-now.pair .num { background: var(--primary); color: var(--on-primary); box-shadow: 0 0 14px color-mix(in srgb, var(--primary) 60%, transparent); }
-:root[data-style="neon"] .phase-now.pair .timer { color: var(--primary); text-shadow: 0 0 10px color-mix(in srgb, var(--primary) 55%, transparent); }
-:root[data-style="neon"] .phase-now.pair .progress { background: var(--card-high); }
-:root[data-style="neon"] .phase-now.pair .progress > div { background: var(--primary); box-shadow: 0 0 10px var(--primary); }
-:root[data-style="neon"] .chip.sel, :root[data-style="neon"] .btn:not(.outline) { box-shadow: 0 0 16px color-mix(in srgb, var(--primary) 55%, transparent); }
-:root[data-style="neon"] .summary { background: transparent; color: var(--primary); border-color: var(--card-line); }
-:root[data-style="neon"] .page-header h1 { text-shadow: 0 0 22px color-mix(in srgb, var(--primary) 45%, transparent); }
-
 /* ---------- Стиль «Контур»: жирные рамки и жёсткие тени ---------- */
 :root[data-style="outline"] {
   --r-card: 10px; --r-ctl: 8px; --card-line: var(--text); --weight-title: 900; --nav-height: 86px;
@@ -858,8 +839,86 @@ button, input, select, textarea { font-family: inherit; }
 .style-preview[data-preview="paper"] { background: repeating-linear-gradient(to bottom, var(--bg) 0 10px, var(--outline) 10px 11px); }
 .style-preview[data-preview="paper"] i, .style-preview[data-preview="paper"] b { border-radius: 2px; background: var(--bg); border: 1px solid var(--outline); }
 .style-preview[data-preview="paper"] i:first-child { border: 2px solid var(--primary); }
-.style-preview[data-preview="neon"] { background: #101014; border-color: transparent; }
-.style-preview[data-preview="neon"] i, .style-preview[data-preview="neon"] b { background: #1c1c24; }
-.style-preview[data-preview="neon"] i:first-child { background: var(--primary); box-shadow: 0 0 12px var(--primary); }
 .style-preview[data-preview="outline"] i, .style-preview[data-preview="outline"] b { border-radius: 4px; background: var(--bg); border: 2px solid var(--text); box-shadow: 2px 2px 0 var(--text); }
 .style-preview[data-preview="outline"] i:first-child { background: var(--primary); }
+
+/* ===== Цвета v3: все темы построены по одной шкале светлоты в OKLCH =====
+   Одинаковая яркость текста, фона и акцента в каждой теме; насыщенность умеренная. */
+:root[data-palette="forest"] { --primary: #446327; --on-primary: #FFFFFF; --primary-c: #DDECD1; --on-primary-c: #1C2C0C; --secondary-c: #E7EEE3; --on-secondary-c: #1E241A; --secondary: #555F4D; --tertiary: #6D5829; --tertiary-c: #F3E5C9; --on-tertiary-c: #342707; --bg: #F9FBF7; --card: #EEF2EB; --card-high: #E2E8DE; --text: #171C14; --muted: #575D52; --outline: #C9D1C3; }
+:root[data-palette="forest"][data-appearance="dark"] { --primary: #AEC89A; --on-primary: #17240B; --primary-c: #334326; --on-primary-c: #DCEAD2; --secondary-c: #2D3328; --on-secondary-c: #E1E7DD; --secondary: #B1BBA9; --tertiary: #D0BB92; --tertiary-c: #483B20; --on-tertiary-c: #EFE3CB; --bg: #0F110E; --card: #191C16; --card-high: #252922; --text: #E5E9E3; --muted: #ADB4A8; --outline: #464D42; }
+:root[data-palette="mint"] { --primary: #206749; --on-primary: #FFFFFF; --primary-c: #D2EEDF; --on-primary-c: #092E1F; --secondary-c: #E2EFE8; --on-secondary-c: #19251F; --secondary: #4C6056; --tertiary: #72552B; --tertiary-c: #F6E3C9; --on-tertiary-c: #372508; --bg: #F7FBF9; --card: #EBF3EE; --card-high: #DEE9E3; --text: #131D18; --muted: #515E57; --outline: #C3D2CA; }
+:root[data-palette="mint"][data-appearance="dark"] { --primary: #9BCBB2; --on-primary: #082519; --primary-c: #254536; --on-primary-c: #D3ECDE; --secondary-c: #27342D; --on-secondary-c: #DDE8E2; --secondary: #A8BDB2; --tertiary: #D5B993; --tertiary-c: #4B3A21; --on-tertiary-c: #F3E2CB; --bg: #0D120F; --card: #161C19; --card-high: #212A25; --text: #E2EAE6; --muted: #A8B5AE; --outline: #414E47; }
+:root[data-palette="teal"] { --primary: #0D6565; --on-primary: #FFFFFF; --primary-c: #CFEDED; --on-primary-c: #012D2D; --secondary-c: #E0EFEE; --on-secondary-c: #162525; --secondary: #476060; --tertiary: #785130; --tertiary-c: #FBE1CC; --on-tertiary-c: #3B220D; --bg: #F6FBFB; --card: #E9F3F3; --card-high: #DBEAE9; --text: #101D1D; --muted: #4E5F5E; --outline: #C0D2D2; }
+:root[data-palette="teal"][data-appearance="dark"] { --primary: #95C9C8; --on-primary: #042525; --primary-c: #204444; --on-primary-c: #D0EBEA; --secondary-c: #243433; --on-secondary-c: #DBE8E7; --secondary: #A4BDBD; --tertiary: #DBB597; --tertiary-c: #4F3724; --on-tertiary-c: #F7E0CE; --bg: #0D1212; --card: #151C1C; --card-high: #1F2A2A; --text: #E1EAEA; --muted: #A5B5B4; --outline: #3E4E4E; }
+:root[data-palette="sky"] { --primary: #055F86; --on-primary: #FFFFFF; --primary-c: #CCEBFF; --on-primary-c: #012A3E; --secondary-c: #E1EDF5; --on-secondary-c: #18232A; --secondary: #4B5E69; --tertiary: #795033; --tertiary-c: #FCE0CE; --on-tertiary-c: #3C220F; --bg: #F7FBFD; --card: #EAF2F7; --card-high: #DDE8EF; --text: #121C22; --muted: #505D65; --outline: #C2D0D9; }
+:root[data-palette="sky"][data-appearance="dark"] { --primary: #90C6E6; --on-primary: #012333; --primary-c: #1C4256; --on-primary-c: #CDE9FB; --secondary-c: #273239; --on-secondary-c: #DCE6ED; --secondary: #A7BBC7; --tertiary: #DDB499; --tertiary-c: #503726; --on-tertiary-c: #F8DFCF; --bg: #0D1114; --card: #161C1F; --card-high: #21292E; --text: #E2E9EE; --muted: #A7B3BB; --outline: #404C54; }
+:root[data-palette="ocean"] { --primary: #285994; --on-primary: #FFFFFF; --primary-c: #D7E8FD; --on-primary-c: #0D2746; --secondary-c: #E4ECF6; --on-secondary-c: #1B222B; --secondary: #505C6C; --tertiary: #74542C; --tertiary-c: #F8E2CA; --on-tertiary-c: #382409; --bg: #F8FAFD; --card: #ECF1F8; --card-high: #E0E7F0; --text: #151B23; --muted: #535C66; --outline: #C5CFDB; }
+:root[data-palette="ocean"][data-appearance="dark"] { --primary: #9CC1F1; --on-primary: #0B2039; --primary-c: #263E5C; --on-primary-c: #D4E6FE; --secondary-c: #2A313A; --on-secondary-c: #DEE5EE; --secondary: #ACB9CA; --tertiary: #D7B894; --tertiary-c: #4C3922; --on-tertiary-c: #F4E1CC; --bg: #0E1114; --card: #171B20; --card-high: #23282F; --text: #E3E8EF; --muted: #AAB2BD; --outline: #434B55; }
+:root[data-palette="indigo"] { --primary: #4A4E99; --on-primary: #FFFFFF; --primary-c: #E0E5FE; --on-primary-c: #1F2149; --secondary-c: #E8EAF6; --on-secondary-c: #1F212B; --secondary: #57596C; --tertiary: #754B67; --tertiary-c: #FADCEF; --on-tertiary-c: #391F31; --bg: #F9FAFE; --card: #EFF0F8; --card-high: #E3E5F0; --text: #181A23; --muted: #585A66; --outline: #CACDDB; }
+:root[data-palette="indigo"][data-appearance="dark"] { --primary: #B0B9F5; --on-primary: #191B3B; --primary-c: #35395F; --on-primary-c: #DEE3FE; --secondary-c: #2E2F3B; --on-secondary-c: #E2E4EE; --secondary: #B3B6CA; --tertiary: #D9AFCA; --tertiary-c: #4D3445; --on-tertiary-c: #F6DCEC; --bg: #101014; --card: #191A20; --card-high: #26272F; --text: #E6E7EF; --muted: #AEB0BD; --outline: #484A55; }
+:root[data-palette="violet"] { --primary: #674689; --on-primary: #FFFFFF; --primary-c: #EDE0FE; --on-primary-c: #2E1D40; --secondary-c: #EDE9F4; --on-secondary-c: #241F29; --secondary: #5F5769; --tertiary: #7E4B47; --tertiary-c: #FEDEDA; --on-tertiary-c: #3E1E1C; --bg: #FBF9FD; --card: #F2EFF7; --card-high: #E8E4EE; --text: #1C1921; --muted: #5D5864; --outline: #D1CBD9; }
+:root[data-palette="violet"][data-appearance="dark"] { --primary: #C9B1E7; --on-primary: #251834; --primary-c: #443557; --on-primary-c: #EBDEFC; --secondary-c: #332E39; --on-secondary-c: #E7E2EC; --secondary: #BBB3C6; --tertiary: #E2AFAA; --tertiary-c: #523431; --on-tertiary-c: #FBDCD9; --bg: #111013; --card: #1C191F; --card-high: #29262E; --text: #E9E6ED; --muted: #B4AEBB; --outline: #4D4853; }
+:root[data-palette="rose"] { --primary: #853C58; --on-primary: #FFFFFF; --primary-c: #FEDCE6; --on-primary-c: #3E1726; --secondary-c: #F5E7EB; --on-secondary-c: #2A1E22; --secondary: #69545B; --tertiary: #72552B; --tertiary-c: #F6E3C9; --on-tertiary-c: #372508; --bg: #FDF9FA; --card: #F8EEF1; --card-high: #EFE2E6; --text: #22171A; --muted: #65565B; --outline: #DAC9CE; }
+:root[data-palette="rose"][data-appearance="dark"] { --primary: #E7AABD; --on-primary: #32131F; --primary-c: #55303D; --on-primary-c: #FCDAE4; --secondary-c: #392C30; --on-secondary-c: #EDE1E4; --secondary: #C7B0B7; --tertiary: #D5B993; --tertiary-c: #4B3A21; --on-tertiary-c: #F3E2CB; --bg: #140F10; --card: #1F191A; --card-high: #2E2528; --text: #EEE5E8; --muted: #BBADB1; --outline: #54464A; }
+:root[data-palette="crimson"] { --primary: #933331; --on-primary: #FFFFFF; --primary-c: #FDDEDB; --on-primary-c: #451312; --secondary-c: #F6E7E6; --on-secondary-c: #2B1E1D; --secondary: #6B5552; --tertiary: #6D5829; --tertiary-c: #F3E5C9; --on-tertiary-c: #342707; --bg: #FDF9F8; --card: #F8EEED; --card-high: #F0E3E1; --text: #221716; --muted: #665755; --outline: #DBC9C7; }
+:root[data-palette="crimson"][data-appearance="dark"] { --primary: #F4A69F; --on-primary: #38100F; --primary-c: #5D2D2A; --on-primary-c: #FDDCD8; --secondary-c: #3A2D2B; --on-secondary-c: #EEE1E0; --secondary: #C9B1AE; --tertiary: #D0BB92; --tertiary-c: #483B20; --on-tertiary-c: #EFE3CB; --bg: #140F0F; --card: #1F1918; --card-high: #2F2524; --text: #EEE5E4; --muted: #BCADAB; --outline: #554645; }
+:root[data-palette="sand"] { --primary: #784C2D; --on-primary: #FFFFFF; --primary-c: #F8E1D3; --on-primary-c: #372010; --secondary-c: #F6E8DF; --on-secondary-c: #2B1F17; --secondary: #6B5648; --tertiary: #45653E; --tertiary-c: #D9EDD4; --on-tertiary-c: #1B2F17; --bg: #FDF9F6; --card: #F8EFE9; --card-high: #F0E3DB; --text: #231811; --muted: #66584E; --outline: #DBCABF; }
+:root[data-palette="sand"][data-appearance="dark"] { --primary: #DAB59D; --on-primary: #2D1A0D; --primary-c: #4E3728; --on-primary-c: #F4E0D3; --secondary-c: #3A2D25; --on-secondary-c: #EEE2DA; --secondary: #C9B2A3; --tertiary: #AAC8A3; --tertiary-c: #30432C; --on-tertiary-c: #D9EBD5; --bg: #140F0D; --card: #201915; --card-high: #2F251F; --text: #EFE6E0; --muted: #BDAEA4; --outline: #55473E; }
+:root[data-palette="amber"] { --primary: #725200; --on-primary: #FFFFFF; --primary-c: #F4E4C9; --on-primary-c: #342300; --secondary-c: #F2EADD; --on-secondary-c: #272114; --secondary: #655944; --tertiary: #3D6646; --tertiary-c: #D4EED8; --on-tertiary-c: #15301B; --bg: #FCFAF6; --card: #F5F0E7; --card-high: #ECE5D9; --text: #201A0F; --muted: #625A4C; --outline: #D6CDBD; }
+:root[data-palette="amber"][data-appearance="dark"] { --primary: #D4BA8B; --on-primary: #2A1D01; --primary-c: #4B3A1B; --on-primary-c: #F1E3CA; --secondary-c: #362F22; --on-secondary-c: #EAE4D8; --secondary: #C2B6A0; --tertiary: #A3C9AA; --tertiary-c: #2C4431; --on-tertiary-c: #D5ECD9; --bg: #13100C; --card: #1E1A14; --card-high: #2C271E; --text: #ECE7DF; --muted: #B8B0A2; --outline: #51493C; }
+:root[data-palette="graphite"] { --primary: #4F5964; --on-primary: #FFFFFF; --primary-c: #E2E7EC; --on-primary-c: #22272D; --secondary-c: #E7ECF0; --on-secondary-c: #1E2226; --secondary: #555C63; --tertiary: #74542C; --tertiary-c: #F8E2CA; --on-tertiary-c: #382409; --bg: #F9FAFC; --card: #EEF1F4; --card-high: #E3E7EB; --text: #171B1F; --muted: #575B60; --outline: #C9CED4; }
+:root[data-palette="graphite"][data-appearance="dark"] { --primary: #B6BFC8; --on-primary: #1B2024; --primary-c: #383E43; --on-primary-c: #E0E5EA; --secondary-c: #2D3135; --on-secondary-c: #E1E5E9; --secondary: #B1B8C0; --tertiary: #D7B894; --tertiary-c: #4C3922; --on-tertiary-c: #F4E1CC; --bg: #0F1112; --card: #191B1D; --card-high: #25282B; --text: #E5E8EB; --muted: #ADB2B7; --outline: #464B50; }
+
+/* ===== Полировка v3: спокойнее, без свечения и без капса ===== */
+:root { --weight-title: 750; }
+.section { text-transform: none; letter-spacing: 0; font-size: 15px; font-weight: 650; color: var(--muted); margin: 16px 4px 0; }
+.pair .num span { text-transform: none; letter-spacing: 0; font-size: 11px; opacity: .8; }
+.page-header h1 { letter-spacing: -.025em; }
+.brand { letter-spacing: 0; }
+/* Тени только нейтральные и мягкие: цветное свечение утомляет глаз. */
+.bottom-nav { box-shadow: 0 6px 20px color-mix(in srgb, #000 10%, transparent); }
+.chip.sel, .phase-now.pair { box-shadow: none; }
+.nav-item { font-weight: 600; }
+.list { gap: 10px; }
+.card { padding: 16px; }
+.pair .subject { font-weight: 650; }
+.summary { font-weight: 600; }
+.brk-row::before, .brk-row::after { border-top-color: color-mix(in srgb, var(--outline) 70%, transparent); }
+@media (prefers-reduced-motion: reduce) { .summary-dot { animation: none; } .nav-item, .chip, .switch-row i, .switch-row i::after { transition: none; } }
+
+/* «Стекло»: фон едва тонирован, без кислотных переходов */
+:root[data-style="glass"] {
+  --page: radial-gradient(130% 60% at 0% 0%, color-mix(in srgb, var(--primary) 20%, var(--bg)) 0%, transparent 62%),
+          radial-gradient(120% 60% at 100% 100%, color-mix(in srgb, var(--tertiary) 16%, var(--bg)) 0%, transparent 64%), var(--bg);
+  --shadow: 0 6px 20px color-mix(in srgb, #000 7%, transparent);
+}
+:root[data-style="glass"] .phase-now.pair, :root[data-style="glass"] .nav-item.active, :root[data-style="glass"] .btn:not(.outline), :root[data-style="glass"] .grade-summary { background: var(--primary); }
+:root[data-style="soft"] .btn:not(.outline) { box-shadow: var(--shadow); }
+:root[data-style="paper"] .phase-now.pair { box-shadow: none; }
+:root[data-style="paper"] .section { font-weight: 600; }
+
+/* ---------- Стиль «Цветной»: шапка в цвет темы, остальное спокойное ---------- */
+:root[data-style="band"] { --r-card: 20px; --r-ctl: 14px; }
+:root[data-style="band"] .page-header { background: var(--primary); color: var(--on-primary); padding-bottom: 20px; margin-bottom: 16px; border-radius: 0 0 26px 26px; }
+:root[data-style="band"] .page-header :is(.brand, .brand span, .muted, .icon, a, button, p) { color: inherit; }
+:root[data-style="band"] .page-header .muted, :root[data-style="band"] .page-header .brand { opacity: .86; }
+:root[data-style="band"] .page-header .icon:hover, :root[data-style="band"] .page-header .icon:active { background: color-mix(in srgb, var(--on-primary) 16%, transparent); }
+:root[data-style="band"] .page-header :focus-visible { outline-color: var(--on-primary); }
+:root[data-style="band"] .phase-now.pair { background: var(--primary-c); color: var(--on-primary-c); border-color: transparent; }
+:root[data-style="band"] .phase-now.pair .num { background: var(--primary); color: var(--on-primary); }
+:root[data-style="band"] .phase-now.pair .progress { background: color-mix(in srgb, var(--on-primary-c) 14%, transparent); }
+:root[data-style="band"] .phase-now.pair .progress > div { background: var(--primary); }
+:root[data-style="band"] .summary { background: var(--card); color: var(--text); }
+.style-preview[data-preview="band"] { padding: 0 9px 9px; align-content: start; }
+.style-preview[data-preview="band"] i:first-child { grid-column: 1 / -1; height: 24px; margin: 0 -9px; border-radius: 0 0 10px 10px; }
+.style-preview[data-preview="band"] i:nth-child(2) { grid-column: 1 / -1; height: 14px; }
+.style-preview[data-preview="band"] b { height: 12px; }
+
+/* В тёмном режиме текущая пара и цветная шапка — глубокий тон, а не светлая плашка:
+   большая пастельная область на тёмном фоне слепит. */
+:root[data-appearance="dark"]:is([data-style="calm"], [data-style="glass"], [data-style="soft"], [data-style="outline"]) .phase-now.pair { background: var(--primary-c); color: var(--on-primary-c); border-color: color-mix(in srgb, var(--primary) 45%, transparent); }
+:root[data-appearance="dark"]:is([data-style="calm"], [data-style="glass"], [data-style="soft"], [data-style="outline"]) .phase-now.pair .num { background: var(--primary); color: var(--on-primary); }
+:root[data-appearance="dark"]:is([data-style="calm"], [data-style="glass"], [data-style="soft"], [data-style="outline"]) .phase-now.pair .progress { background: color-mix(in srgb, var(--on-primary-c) 16%, transparent); }
+:root[data-appearance="dark"]:is([data-style="calm"], [data-style="glass"], [data-style="soft"], [data-style="outline"]) .phase-now.pair .progress > div { background: var(--primary); }
+:root[data-appearance="dark"][data-style="band"] .page-header { background: var(--primary-c); color: var(--on-primary-c); }
+:root[data-appearance="dark"][data-style="band"] .page-header .icon:hover { background: color-mix(in srgb, var(--on-primary-c) 14%, transparent); }
