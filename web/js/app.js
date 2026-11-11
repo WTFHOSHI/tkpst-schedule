@@ -44,6 +44,12 @@ const paletteOptions = [
   ['sand', 'Тёплая', '#8B5319'],
   ['rose', 'Розовая', '#A8455F'],
   ['teal', 'Бирюзовая', '#1F6F6B'],
+  ['crimson', 'Красная', '#B3261E'],
+  ['amber', 'Янтарная', '#8A5A00'],
+  ['indigo', 'Индиго', '#3F4FB5'],
+  ['mint', 'Мятная', '#2B7A56'],
+  ['sky', 'Небесная', '#0B6FA8'],
+  ['graphite', 'Графит', '#46525E'],
   ['mono', 'Чёрно-белая', 'linear-gradient(90deg, #161616 50%, #fff 50%)'],
 ];
 // Стиль оформления меняет форму, шрифт и поверхности; цвет и режим выбираются отдельно.
@@ -54,6 +60,9 @@ const styleOptions = [
   ['glass', 'Стекло', 'Градиент и размытие'],
   ['soft', 'Мягкий', 'Объём и тени'],
   ['terminal', 'Терминал', 'Моноширинный, строгий'],
+  ['paper', 'Бумага', 'Шрифт с засечками'],
+  ['neon', 'Неон', 'Свечение акцента'],
+  ['outline', 'Контур', 'Жирные рамки и тени'],
 ];
 const paletteNames = new Set(paletteOptions.map(([name]) => name));
 const styleNames = new Set(styleOptions.map(([name]) => name));
@@ -84,7 +93,6 @@ let currentSection = 'schedule';
 let lastHash = null;
 let selectedSemester = '2026-1';
 let selectedAttendanceMonth = currentMonth();
-let selectedProgressTab = 'attendance';
 let viewVersion = 0;
 
 function go(path) { location.hash = '#/' + path; }
@@ -171,7 +179,7 @@ function requireAccount(title) {
   const state = auth.state();
   if (state.status === 'loading') { sessionLoading(title); return false; }
   if (state.user) return true;
-  $app.innerHTML = topBar(title, 'Посещаемость и оценки') + signedOutMarkup(state.status === 'unavailable');
+  $app.innerHTML = topBar(title, 'Ваши пропуски по месяцам') + signedOutMarkup(state.status === 'unavailable');
   const retry = $app.querySelector('[data-auth-retry]');
   if (retry) retry.onclick = async () => { retry.disabled = true; await auth.restore(); if (authPages.has(currentPath())) render(); };
   return false;
@@ -258,7 +266,7 @@ function account() {
 }
 
 function grades() {
-  if (!requireAccount('Успеваемость')) return;
+  if (!requireAccount('Посещаемость')) return;
   const version = ++viewVersion;
   const month = selectedAttendanceMonth;
   const user = auth.state().user;
@@ -267,22 +275,7 @@ function grades() {
   const active = () => version === viewVersion && month === selectedAttendanceMonth && auth.state().user === user;
   const paint = state => {
     const focused = ['data-attendance-prev', 'data-attendance-next', 'data-attendance-month', 'data-attendance-retry'].find(attr => document.activeElement?.hasAttribute(attr));
-    const focusedTab = document.activeElement?.dataset.progressTab;
-    $app.innerHTML = topBar('Успеваемость', null) + attendanceMarkup({ month, tab: selectedProgressTab, subjects, subjectsPending, ...state });
-    $app.querySelectorAll('[data-progress-tab]').forEach(button => {
-      button.onclick = () => {
-        if (selectedProgressTab === button.dataset.progressTab) return;
-        selectedProgressTab = button.dataset.progressTab;
-        render();
-        $app.querySelector(`[data-progress-tab="${selectedProgressTab}"]`)?.focus({ preventScroll: true });
-      };
-      button.onkeydown = event => {
-        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-        event.preventDefault();
-        $app.querySelector(`[data-progress-tab="${button.dataset.progressTab === 'grades' ? 'attendance' : 'grades'}"]`)?.click();
-      };
-    });
-    if (selectedProgressTab === 'grades') return;
+    $app.innerHTML = topBar('Посещаемость', null) + attendanceMarkup({ month, subjects, subjectsPending, ...state });
     $app.querySelector('[data-attendance-prev]').onclick = () => selectMonth(shiftMonth(month, -1));
     $app.querySelector('[data-attendance-next]').onclick = () => selectMonth(shiftMonth(month, 1));
     const input = $app.querySelector('[data-attendance-month]');
@@ -293,14 +286,12 @@ function grades() {
     const retry = $app.querySelector('[data-attendance-retry]');
     if (retry) retry.onclick = () => load();
     if (focused) $app.querySelector(`[${focused}]`)?.focus({ preventScroll: true });
-    else if (focusedTab) $app.querySelector(`[data-progress-tab="${focusedTab}"]`)?.focus({ preventScroll: true });
   };
   const selectMonth = next => {
     if (next === selectedAttendanceMonth) return;
     selectedAttendanceMonth = next;
     render();
   };
-  if (selectedProgressTab === 'grades') { paint({ kind: 'ready' }); return; }
   let currentData = null;
   let fingerprint = null;
   let refreshError = false;
@@ -1056,6 +1047,10 @@ function settings() {
   const style = pick('style', styleNames, 'calm');
   const home = store.get('home');
   const info = currentDiagnostics();
+  // Напоминание настраивается в самом приложении Android; в браузере и на iOS пункта нет.
+  const nativeReminder = typeof globalThis.TkpstTheme?.setReminder === 'function';
+  let reminderOn = false;
+  try { reminderOn = nativeReminder && globalThis.TkpstTheme.getReminder() === true; } catch { /* старая сборка приложения */ }
   const mode = (v, l) => `<label><input type="radio" name="theme" value="${v}" ${theme === v ? 'checked' : ''}><span>${l}</span></label>`;
   const color = ([key, label, swatch]) => `<label class="swatch-choice" title="${label}"><input type="radio" name="palette" value="${key}" ${palette === key ? 'checked' : ''}><span class="theme-swatch" style="--swatch:${swatch}" aria-hidden="true"></span><span class="swatch-name">${label}</span></label>`;
   const look = ([key, label, hint]) => `<label class="style-choice"><input type="radio" name="style" value="${key}" ${style === key ? 'checked' : ''}><span class="style-preview" data-preview="${key}" aria-hidden="true"><i></i><i></i><b></b></span><span class="style-name">${label}</span><span class="style-hint">${hint}</span></label>`;
@@ -1068,6 +1063,8 @@ function settings() {
       <div class="swatch-row" role="radiogroup" aria-label="Цветовая тема">${paletteOptions.map(color).join('')}</div>
       <h3 class="section">Режим</h3>
       <div class="mode-seg" role="radiogroup" aria-label="Режим">${mode('system', 'Как в системе')}${mode('light', 'Светлый')}${mode('dark', 'Тёмный')}</div>
+      ${nativeReminder ? `<h3 class="section">Уведомления</h3>
+      <label class="card switch-row"><span><b>Напоминание перед первой парой</b><span class="muted small">За 10 минут до начала занятий</span></span><input type="checkbox" data-reminder ${reminderOn ? 'checked' : ''}><i aria-hidden="true"></i></label>` : ''}
       <h3 class="section">Расписание</h3>
       <div class="card setting-card">
         <div>Группа ИС-25-3С · Луначарского, 19</div>
@@ -1095,6 +1092,8 @@ function settings() {
   for (const name of ['theme', 'palette', 'style']) {
     $app.querySelectorAll(`input[name=${name}]`).forEach((r) => { r.onchange = () => { store.set(name, r.value); applyTheme(); }; });
   }
+  const reminder = $app.querySelector('[data-reminder]');
+  if (reminder) reminder.onchange = () => { try { globalThis.TkpstTheme.setReminder(reminder.checked); } catch { reminder.checked = !reminder.checked; } };
   $app.querySelector('[data-clear]').onclick = (e) => { clearScheduleCache(); e.target.textContent = 'Очищено'; e.target.disabled = true; };
   $app.querySelector('[data-addr]').onclick = () => go('address');
   const report = $app.querySelector('[data-report-preview]');

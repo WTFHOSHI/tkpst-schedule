@@ -8,7 +8,7 @@ export function icon(name) {
 export function bottomNav(section) {
   return [
     ['schedule', 'Расписание', 'calendar-check'],
-    ['grades', 'Успеваемость', 'chart-no-axes-column'],
+    ['grades', 'Посещаемость', 'chart-no-axes-column'],
     ['buses', 'Автобусы', 'bus-front'],
   ].map(([path, label, glyph]) => `<a class="nav-item ${section === path ? 'active' : ''}" href="#/${path}" ${section === path ? 'aria-current="page"' : ''}><span class="nav-glyph">${icon(glyph)}</span><span>${label}</span></a>`).join('');
 }

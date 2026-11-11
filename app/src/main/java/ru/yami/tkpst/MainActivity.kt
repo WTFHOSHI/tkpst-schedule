@@ -202,6 +202,14 @@ class MainActivity : ComponentActivity() {
             .put("engine", "WebView " + (WebView.getCurrentWebViewPackage()?.versionName ?: "unknown"))
             .toString()
 
+        /** Напоминание за 10 минут до первой пары: переключатель в настройках интерфейса. */
+        @JavascriptInterface fun getReminder(): Boolean = (application as App).settings.reminder
+
+        @JavascriptInterface fun setReminder(enabled: Boolean) {
+            (application as App).settings.reminder = enabled
+            runOnUiThread { runCatching { ru.yami.tkpst.widget.ScheduleTicker.refresh(applicationContext) } }
+        }
+
         @JavascriptInterface fun appearanceChanged(value: String, background: String) {
             runOnUiThread {
                 if (isDestroyed) return@runOnUiThread
@@ -236,7 +244,12 @@ class MainActivity : ComponentActivity() {
         ViewCompat.requestApplyInsets(root)
     }
 
-    override fun onPause() { super.onPause(); if (::site.isInitialized) site.onPause() }
+    override fun onPause() {
+        super.onPause()
+        if (::site.isInitialized) site.onPause()
+        // При уходе из приложения виджет получает самое свежее расписание.
+        runCatching { ru.yami.tkpst.widget.ScheduleTicker.refresh(applicationContext) }
+    }
     override fun onResume() { super.onResume(); if (::site.isInitialized) site.onResume() }
     override fun onDestroy() {
         if (::site.isInitialized) {

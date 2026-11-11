@@ -25,6 +25,8 @@ class ScheduleSyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val admin = (applicationContext as App).overrides.refresh(today).orEmpty()
         val changes = repo.prefetch(weeksToSync(today), today)
         ScheduleNotifier.notify(applicationContext, admin.associateWith { DayChange.CHANGED } + changes.orEmpty())
+        // Свежее расписание сразу попадает в виджет и в напоминание о первой паре.
+        runCatching { ru.yami.tkpst.widget.ScheduleTicker.refresh(applicationContext) }
         if (changes == null) return Result.retry()
         return Result.success()
     }

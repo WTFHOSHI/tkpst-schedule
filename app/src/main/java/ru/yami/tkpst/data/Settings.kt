@@ -49,6 +49,11 @@ class Settings(context: Context) {
             .apply()
     }
 
+    /** Напоминание за 10 минут до первой пары. */
+    var reminder: Boolean
+        get() = prefs.getBoolean("reminder_first_pair", true)
+        set(v) = prefs.edit().putBoolean("reminder_first_pair", v).apply()
+
     /** Разрешение на уведомления спрашиваем один раз. */
     var askedNotifications: Boolean
         get() = prefs.getBoolean("asked_notifications", false)

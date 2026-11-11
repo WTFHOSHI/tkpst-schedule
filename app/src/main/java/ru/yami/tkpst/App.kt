@@ -6,6 +6,7 @@ import ru.yami.tkpst.data.ScheduleRepository
 import ru.yami.tkpst.data.ScheduleSyncWorker
 import ru.yami.tkpst.data.Settings
 import ru.yami.tkpst.data.transit.TransitRepository
+import ru.yami.tkpst.widget.ScheduleTicker
 
 class App : Application() {
     val repository by lazy { ScheduleRepository(this) }
@@ -17,5 +18,6 @@ class App : Application() {
         super.onCreate()
         overrides // загрузить сохранённые изменения админа до первого экрана
         ScheduleSyncWorker.schedule(this)
+        runCatching { ScheduleTicker.refresh(this) } // виджет и напоминание после перезапуска приложения
     }
 }

@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ТКПСТ Расписание</string>
+    <string name="widget_name">Текущая и следующая пара</string>
+    <string name="widget_description">Что идёт сейчас, когда закончится и что дальше</string>
 </resources>
