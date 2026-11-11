@@ -24,7 +24,7 @@ enum PairReminder {
         for offset in 0..<ids.count {
             let day = Tyumen.addDays(offset, to: now)
             guard let data = ScheduleRepository.shared.cached(day),
-                  let first = DayState.firstInPerson(OverridesStore.shared.build(day, data.lessons)) else { continue }
+                  let first = TkpstCore.DayState.firstInPerson(OverridesStore.shared.build(day, data.lessons)) else { continue }
             let fire = Tyumen.at(day, minutes: first.start - minutesBefore)
             guard fire > now else { continue }
             let content = UNMutableNotificationContent()
