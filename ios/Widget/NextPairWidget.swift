@@ -205,7 +205,8 @@ private extension View {
 struct TkpstWidgets: WidgetBundle {
     var body: some Widget {
         NextPairWidget()
-        DiagnosticWidget()
+        DiagnosticViewWidget()
+        DiagnosticDataWidget()
     }
 }
 
@@ -220,35 +221,76 @@ struct NextPairWidget: Widget {
     }
 }
 
-// MARK: - Проверочный виджет
+// MARK: - Проверочные виджеты (временные)
 
-/// Ничего не скачивает и не трогает расписание: только текст, номер сборки и время.
-/// Если на iPhone пуст даже он — iOS не запускает расширение (подпись/установка),
-/// если он виден, а основной нет — ошибка в коде основного виджета.
-struct DiagnosticEntry: TimelineEntry {
+/// «Проверка 1: вид» — основной вид с тестовой записью, без сети и без загрузки.
+/// Пустой — значит, падает отрисовка основного виджета.
+struct DiagnosticViewProvider: TimelineProvider {
+    func placeholder(in context: Context) -> PairEntry { PairEntry(date: Date(), state: .free, day: Tyumen.startOfDay(Date())) }
+    func getSnapshot(in context: Context, completion: @escaping (PairEntry) -> Void) { completion(placeholder(in: context)) }
+    func getTimeline(in context: Context, completion: @escaping (WidgetKit.Timeline<PairEntry>) -> Void) {
+        completion(WidgetKit.Timeline(entries: [placeholder(in: context)], policy: .never))
+    }
+}
+
+struct DiagnosticViewWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "DiagnosticView", provider: DiagnosticViewProvider()) { entry in
+            PairWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Проверка 1: вид")
+        .description("Тест: основной вид без загрузки данных.")
+        .supportedFamilies([.systemSmall])
+    }
+}
+
+/// «Проверка 2: данные» — загрузка основного виджета, итог текстом на красной плитке.
+/// Пустая — значит, загрузка падает или не укладывается во время.
+struct DataEntry: TimelineEntry {
     let date: Date
+    let lines: [String]
 }
 
-struct DiagnosticProvider: TimelineProvider {
-    func placeholder(in context: Context) -> DiagnosticEntry { DiagnosticEntry(date: Date()) }
-    func getSnapshot(in context: Context, completion: @escaping (DiagnosticEntry) -> Void) {
-        completion(DiagnosticEntry(date: Date()))
+struct DiagnosticDataProvider: TimelineProvider {
+    func placeholder(in context: Context) -> DataEntry { DataEntry(date: Date(), lines: ["ожидание…"]) }
+
+    private static func run(online: Bool) async -> DataEntry {
+        let started = Date()
+        let (entries, fresh) = await PairProvider.entries(now: started, online: online)
+        let seconds = Date().timeIntervalSince(started)
+        let state: String
+        switch entries.first?.state {
+        case .current?: state = "сейчас идёт"
+        case .upcoming?: state = "следующая"
+        case .free?: state = "пар нет"
+        case nil: state = "нет записей"
+        }
+        return DataEntry(date: Date(), lines: [
+            online ? "сеть: \(fresh ? "да" : "нет")" : "только кэш",
+            String(format: "%.1f с, записей %d", seconds, entries.count),
+            state,
+        ])
     }
-    func getTimeline(in context: Context, completion: @escaping (WidgetKit.Timeline<DiagnosticEntry>) -> Void) {
-        let now = Date()
-        completion(WidgetKit.Timeline(entries: [DiagnosticEntry(date: now)], policy: .after(now.addingTimeInterval(15 * 60))))
+
+    func getSnapshot(in context: Context, completion: @escaping (DataEntry) -> Void) {
+        Task { completion(await Self.run(online: false)) }
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (WidgetKit.Timeline<DataEntry>) -> Void) {
+        Task {
+            let entry = await Self.run(online: true)
+            completion(WidgetKit.Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(15 * 60))))
+        }
     }
 }
 
-struct DiagnosticWidgetView: View {
-    let entry: DiagnosticEntry
-    private var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?" }
-
+struct DiagnosticDataView: View {
+    let entry: DataEntry
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Виджет работает").font(.headline)
-            Text("Сборка \(build)").font(.caption)
-            Text(entry.date, style: .time).font(.caption)
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Данные").font(.headline)
+            ForEach(entry.lines, id: \.self) { Text($0).font(.caption) }
+            Text(entry.date, style: .time).font(.caption2)
         }
         .foregroundColor(.white)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -267,13 +309,13 @@ private extension View {
     }
 }
 
-struct DiagnosticWidget: Widget {
+struct DiagnosticDataWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "Diagnostic", provider: DiagnosticProvider()) { entry in
-            DiagnosticWidgetView(entry: entry)
+        StaticConfiguration(kind: "DiagnosticData", provider: DiagnosticDataProvider()) { entry in
+            DiagnosticDataView(entry: entry)
         }
-        .configurationDisplayName("ТКПСТ: проверка")
-        .description("Тестовый виджет: показывает, что iOS запускает виджеты приложения.")
+        .configurationDisplayName("Проверка 2: данные")
+        .description("Тест: загрузка расписания для виджета.")
         .supportedFamilies([.systemSmall])
     }
 }
