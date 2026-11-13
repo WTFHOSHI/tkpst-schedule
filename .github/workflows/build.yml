@@ -129,12 +129,23 @@ jobs:
           codesign --force --sign - --entitlements Entitlements/Tkpst.entitlements Payload/Tkpst.app
           codesign -d --entitlements - Payload/Tkpst.app 2>&1 | grep -q 'group.ru.yami.tkpst'
           zip -qry ../tkpst-schedule-${{ github.run_number }}.ipa Payload
+          # Вариант для GBox, ESign и других сертификатных подписчиков: в их профилях нет
+          # App Group, и с этим правом iOS не запускает виджет (пустой чёрный квадрат).
+          # Без права виджет работает, но не знает цвета темы и рисуется в стандартных.
+          rm -rf Payload && mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/Tkpst.app Payload/
+          codesign --force --sign - Payload/Tkpst.app/PlugIns/TkpstWidget.appex
+          codesign --force --sign - Payload/Tkpst.app
+          ! codesign -d --entitlements - Payload/Tkpst.app/PlugIns/TkpstWidget.appex 2>&1 | grep -q 'application-groups'
+          zip -qry ../tkpst-schedule-${{ github.run_number }}-gbox.ipa Payload
 
       - uses: actions/upload-artifact@v4
         if: hashFiles('ios/project.yml') != ''
         with:
           name: ios
-          path: tkpst-schedule-${{ github.run_number }}.ipa
+          path: |
+            tkpst-schedule-${{ github.run_number }}.ipa
+            tkpst-schedule-${{ github.run_number }}-gbox.ipa
 
   # APK/IPA are published only after the matching services and Pages are verified.
   deploy:
@@ -213,6 +224,7 @@ jobs:
             Автоматическая сборка из ${{ github.sha }}
             - `.apk` — Android
             - `.ipa` — iPhone (ставится через AltStore / SideStore)
+            - `-gbox.ipa` — iPhone через GBox, ESign и похожие (виджет в стандартных цветах)
           files: |
             out/*.apk
             out/*.ipa
