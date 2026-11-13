@@ -234,8 +234,7 @@ struct DiagnosticViewProvider: TimelineProvider {
         let now = Date()
         let day = Tyumen.startOfDay(now)
         let minute = Int(Tyumen.minuteOfDay(now))
-        let pair = TkpstCore.Entry.pair(number: 2, start: minute - 30, end: minute + 60,
-                                        lessons: [LessonInfo(title: "Тестовая пара", cabinet: "501", teacher: "")], status: .normal)
+        let pair = TkpstCore.Entry.classHour(start: minute - 30, end: minute + 60, title: "Тестовое занятие", cabinet: "501")
         return PairEntry(date: now, state: .current(entry: pair, next: nil), day: day)
     }
     func getSnapshot(in context: Context, completion: @escaping (PairEntry) -> Void) { completion(placeholder(in: context)) }
