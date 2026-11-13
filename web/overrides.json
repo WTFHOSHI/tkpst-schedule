@@ -1,6 +1,6 @@
 {
   "announcement": "",
-  "updatedAt": "2026-11-13T10:31:53.081Z",
+  "updatedAt": "2026-11-13T16:52:35.980Z",
   "days": {
     "2026-11-14": {
       "pairs": [
@@ -10,6 +10,10 @@
         },
         {
           "number": 2,
+          "status": "cancelled"
+        },
+        {
+          "number": 3,
           "status": "cancelled"
         }
       ]
