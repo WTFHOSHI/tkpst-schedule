@@ -202,6 +202,13 @@ private extension View {
 }
 
 @main
+struct TkpstWidgets: WidgetBundle {
+    var body: some Widget {
+        NextPairWidget()
+        DiagnosticWidget()
+    }
+}
+
 struct NextPairWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "NextPair", provider: PairProvider()) { entry in
@@ -210,5 +217,63 @@ struct NextPairWidget: Widget {
         .configurationDisplayName("Текущая и следующая пара")
         .description("Что идёт сейчас, когда закончится и что дальше.")
         .supportedFamilies([.systemSmall, .systemMedium])
+    }
+}
+
+// MARK: - Проверочный виджет
+
+/// Ничего не скачивает и не трогает расписание: только текст, номер сборки и время.
+/// Если на iPhone пуст даже он — iOS не запускает расширение (подпись/установка),
+/// если он виден, а основной нет — ошибка в коде основного виджета.
+struct DiagnosticEntry: TimelineEntry {
+    let date: Date
+}
+
+struct DiagnosticProvider: TimelineProvider {
+    func placeholder(in context: Context) -> DiagnosticEntry { DiagnosticEntry(date: Date()) }
+    func getSnapshot(in context: Context, completion: @escaping (DiagnosticEntry) -> Void) {
+        completion(DiagnosticEntry(date: Date()))
+    }
+    func getTimeline(in context: Context, completion: @escaping (WidgetKit.Timeline<DiagnosticEntry>) -> Void) {
+        let now = Date()
+        completion(WidgetKit.Timeline(entries: [DiagnosticEntry(date: now)], policy: .after(now.addingTimeInterval(15 * 60))))
+    }
+}
+
+struct DiagnosticWidgetView: View {
+    let entry: DiagnosticEntry
+    private var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Виджет работает").font(.headline)
+            Text("Сборка \(build)").font(.caption)
+            Text(entry.date, style: .time).font(.caption)
+        }
+        .foregroundColor(.white)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .diagnosticSurface()
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func diagnosticSurface() -> some View {
+        if #available(iOSApplicationExtension 17.0, *) {
+            containerBackground(Color(red: 0.75, green: 0.20, blue: 0.20), for: .widget)
+        } else {
+            padding().background(Color(red: 0.75, green: 0.20, blue: 0.20))
+        }
+    }
+}
+
+struct DiagnosticWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "Diagnostic", provider: DiagnosticProvider()) { entry in
+            DiagnosticWidgetView(entry: entry)
+        }
+        .configurationDisplayName("ТКПСТ: проверка")
+        .description("Тестовый виджет: показывает, что iOS запускает виджеты приложения.")
+        .supportedFamilies([.systemSmall])
     }
 }
