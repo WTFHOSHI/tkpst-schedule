@@ -176,8 +176,11 @@ struct PairWidgetView: View {
             if !c.span.isEmpty { Text(c.span).font(.caption).foregroundColor(text).lineLimit(2) }
             if let until = c.until {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    // Без .fixedSize(): текст-таймер с ним раздувается до бесконечной ширины,
+                    // раскладка ломается, и iOS показывает пустую плитку.
                     Text(until, style: .timer).font(.title3.weight(.bold)).monospacedDigit()
-                        .foregroundColor(accent).multilineTextAlignment(.leading).fixedSize()
+                        .foregroundColor(accent).multilineTextAlignment(.leading).lineLimit(1)
+                        .frame(maxWidth: family == .systemSmall ? 90 : 120, alignment: .leading)
                     Text(c.timerLabel).font(.caption2).foregroundColor(muted)
                 }
             }
@@ -226,7 +229,15 @@ struct NextPairWidget: Widget {
 /// «Проверка 1: вид» — основной вид с тестовой записью, без сети и без загрузки.
 /// Пустой — значит, падает отрисовка основного виджета.
 struct DiagnosticViewProvider: TimelineProvider {
-    func placeholder(in context: Context) -> PairEntry { PairEntry(date: Date(), state: .free, day: Tyumen.startOfDay(Date())) }
+    func placeholder(in context: Context) -> PairEntry {
+        // Тестовая «идущая пара» с обратным отсчётом — тот случай, на котором основной виджет был пустым.
+        let now = Date()
+        let day = Tyumen.startOfDay(now)
+        let minute = Int(Tyumen.minuteOfDay(now))
+        let pair = TkpstCore.Entry.pair(number: 2, start: minute - 30, end: minute + 60,
+                                        lessons: [LessonInfo(title: "Тестовая пара", cabinet: "501", teacher: "")], status: .normal)
+        return PairEntry(date: now, state: .current(entry: pair, next: nil), day: day)
+    }
     func getSnapshot(in context: Context, completion: @escaping (PairEntry) -> Void) { completion(placeholder(in: context)) }
     func getTimeline(in context: Context, completion: @escaping (WidgetKit.Timeline<PairEntry>) -> Void) {
         completion(WidgetKit.Timeline(entries: [placeholder(in: context)], policy: .never))
@@ -239,7 +250,7 @@ struct DiagnosticViewWidget: Widget {
             PairWidgetView(entry: entry)
         }
         .configurationDisplayName("Проверка 1: вид")
-        .description("Тест: основной вид без загрузки данных.")
+        .description("Тест: основной вид с идущей парой и таймером.")
         .supportedFamilies([.systemSmall])
     }
 }
